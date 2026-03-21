@@ -203,7 +203,7 @@ function isTerminalFlightStatus(status, person) {
   if (/^Flight lookup/i.test(String(status))) return true;
   const sl = String(status).toLowerCase();
   if (sl.includes("cancel")) return true;
-  if (status === "No data found") return isHistoricalArrival(person);
+  if (status === "No data found" || status === "No data for that day") return isHistoricalArrival(person);
   if (status === "Error") return isHistoricalArrival(person);
   return false;
 }
@@ -212,10 +212,25 @@ function flightGroupKey(person) {
   return `${String(person.flight).replace(/\s/g, "").toUpperCase()}_${person.date}`;
 }
 
+function flightRecordToStatusText(f) {
+  const fs = f.flight_status;
+  const arr = f.arrival;
+  if (fs === "landed") {
+    const at = arr?.actual ? new Date(arr.actual).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" }) : "";
+    return at ? `Landed ${at}` : "Landed";
+  }
+  if (fs === "active") return "In flight";
+  if (fs === "scheduled") return arr?.delay ? `Delayed ~${arr.delay} min` : "On time";
+  if (fs === "cancelled") return "Cancelled";
+  return fs || "Unknown";
+}
+
 async function fetchFlightStatusText(person) {
+  if (isLandedStatus(person.status)) return person.status;
   const iata = person.flight.replace(/\s/g, "").toUpperCase();
+  // Free-tier keys reject `flight_date` on this endpoint; omit it and pick the row for our date in-app.
   const data = await fetch(
-    `https://api.aviationstack.com/v1/flights?access_key=${API_KEY}&flight_iata=${encodeURIComponent(iata)}&flight_date=${encodeURIComponent(person.date)}`
+    `https://api.aviationstack.com/v1/flights?access_key=${API_KEY}&flight_iata=${encodeURIComponent(iata)}&limit=100`
   ).then((r) => r.json());
   if (data?.error) {
     const code = data.error.code || "";
@@ -228,21 +243,19 @@ async function fetchFlightStatusText(person) {
     }
     return msg.length > 72 ? `${msg.slice(0, 69)}…` : msg;
   }
-  const list = data?.data;
-  const f = Array.isArray(list) && list.length ? list[0] : null;
-  let txt = "No data found";
-  if (f) {
-    const fs = f.flight_status;
-    const arr = f.arrival;
-    if (fs === "landed") {
-      const at = arr?.actual ? new Date(arr.actual).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" }) : "";
-      txt = at ? `Landed ${at}` : "Landed";
-    } else if (fs === "active") txt = "In flight";
-    else if (fs === "scheduled") txt = arr?.delay ? `Delayed ~${arr.delay} min` : "On time";
-    else if (fs === "cancelled") txt = "Cancelled";
-    else txt = fs || "Unknown";
+  const list = Array.isArray(data?.data) ? data.data : [];
+  let f = list.find((x) => x.flight_date === person.date);
+  if (!f) {
+    f = list.find((x) => {
+      const sch = x.arrival?.scheduled;
+      return typeof sch === "string" && sch.slice(0, 10) === person.date;
+    });
   }
-  return txt;
+  if (!f) {
+    if (!list.length) return "No data found";
+    return "No data for that day";
+  }
+  return flightRecordToStatusText(f);
 }
 
 function StatusBadge({status,loading}) {
@@ -348,8 +361,11 @@ function App() {
     const now = Date.now();
     for (const [key, group] of byKey) {
       if (flightFetchInflightRef.current.has(key)) continue;
-      const fullyDone = group.every((p) => isHistoricalArrival(p) && isTerminalFlightStatus(p.status, p));
-      if (fullyDone) continue;
+      const skipRefresh = group.every((p) => {
+        if (isLandedStatus(p.status)) return true;
+        return isHistoricalArrival(p) && isTerminalFlightStatus(p.status, p);
+      });
+      if (skipRefresh) continue;
       const anyUpcoming = group.some((p) => !isHistoricalArrival(p));
       const minGap = anyUpcoming ? FLIGHT_POLL_MS : 90000;
       if (now - (lastFlightFetchRef.current[key] || 0) < minGap) continue;
@@ -368,6 +384,7 @@ function App() {
           let changed = false;
           const next = prev.map((p) => {
             if (!ids.has(p.id)) return p;
+            if (isLandedStatus(p.status)) return p;
             if (p.status === txt) return p;
             changed = true;
             return { ...p, status: txt };
@@ -381,6 +398,7 @@ function App() {
           let changed = false;
           const next = prev.map((p) => {
             if (!ids.has(p.id)) return p;
+            if (isLandedStatus(p.status)) return p;
             if (p.status === "Error") return p;
             changed = true;
             return { ...p, status: "Error" };
