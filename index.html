@@ -5,9 +5,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Aussies Powercraft Airport Details</title>
-  <script crossorigin src="<https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js>"></script>
-  <script crossorigin src="<https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js>"></script>
-  <script src="<https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js>"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #001A4D; }
@@ -124,24 +124,24 @@ function App() {
 
   function handleSubmit() {
     if (!form.name.trim()||!form.date||!form.time){showToast("Name, date and time are required","error");return;}
-    if (editId){setPeople(prev=>prev.map(p=><p.id>===editId?{...p,...form}:p));showToast("Updated");}
+    if (editId){setPeople(prev=>prev.map(p=>p.id===editId?{...p,...form}:p));showToast("Updated");}
     else{setPeople(prev=>[...prev,{id:uid(),...form,status:null}]);showToast("Added to schedule");}
     resetForm();setView("runs");
   }
 
   function handleEdit(p){
     setForm({name:p.name,mobile:p.mobile||"",date:p.date,time:p.time,flight:p.flight||"",note:p.note||""});
-    setEditId(<p.id>);setView("add");
+    setEditId(p.id);setView("add");
   }
 
-  function handleDelete(id){setPeople(prev=>prev.filter(p=><p.id>!==id));setDelConfirm(null);showToast("Removed");}
+  function handleDelete(id){setPeople(prev=>prev.filter(p=>p.id!==id));setDelConfirm(null);showToast("Removed");}
 
   async function checkFlight(person) {
     if (!person.flight||person.flight==="TRAIN") return;
-    setLoadingF(p=>({...p,[<person.id>]:true}));
+    setLoadingF(p=>({...p,[person.id]:true}));
     try {
       const iata=person.flight.replace(/\s/g,"").toUpperCase();
-      const data=await fetch(`<https://api.aviationstack.com/v1/flights?access_key=${API_KEY}&flight_iata=${iata}&flight_date=${person.date}`>).then(r=>r.json());
+      const data=await fetch(`https://api.aviationstack.com/v1/flights?access_key=${API_KEY}&flight_iata=${iata}&flight_date=${person.date}`).then(r=>r.json());
       const f=data?.data?.[0]; let txt="No data found";
       if(f){
         const fs=f.flight_status,arr=f.arrival;
@@ -151,9 +151,9 @@ function App() {
         else if(fs==="cancelled") txt="Cancelled";
         else txt=fs||"Unknown";
       }
-      setPeople(prev=>prev.map(p=><p.id>===<person.id>?{...p,status:txt}:p));
-    } catch {setPeople(prev=>prev.map(p=><p.id>===<person.id>?{...p,status:"Error"}:p));}
-    setLoadingF(p=>({...p,[<person.id>]:false}));
+      setPeople(prev=>prev.map(p=>p.id===person.id?{...p,status:txt}:p));
+    } catch {setPeople(prev=>prev.map(p=>p.id===person.id?{...p,status:"Error"}:p));}
+    setLoadingF(p=>({...p,[person.id]:false}));
   }
 
   async function checkRunFlights(run){for(const p of run)await checkFlight(p);}
@@ -250,7 +250,7 @@ function App() {
               ].map(f=>(
                 <label key={f.key} style={S.lbl}>
                   <span style={S.lblTxt}>{f.label}</span>
-                  <input style={S.inp} type={f.type} placeholder={<f.ph>}
+                  <input style={S.inp} type={f.type} placeholder={f.ph}
                     value={form[f.key]} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))}/>
                 </label>
               ))}
@@ -272,7 +272,7 @@ function App() {
             {filtered.length===0
               ?<p style={S.empty}>No people added yet - use "+ Add Person" to get started.</p>
               :[...filtered].sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time)).map(p=>(
-                <div key={<p.id>} style={S.lRow}>
+                <div key={p.id} style={S.lRow}>
                   <div>
                     <div style={S.lName}>{p.name}</div>
                     <div style={S.lMeta}>{fmtDate(p.date)} - {fmtTime(p.time)}{p.flight?` - ${p.flight}`:""}</div>
@@ -281,7 +281,7 @@ function App() {
                   </div>
                   <div style={S.lActs}>
                     <button style={S.editBtn} onClick={()=>handleEdit(p)}>Edit</button>
-                    <button style={S.delBtn} onClick={()=>setDelConfirm(<p.id>)}>X</button>
+                    <button style={S.delBtn} onClick={()=>setDelConfirm(p.id)}>X</button>
                   </div>
                 </div>
               ))
@@ -380,7 +380,7 @@ function App() {
 
                   <div style={S.paxList}>
                     {run.map((p)=>(
-                      <div key={<p.id>} style={{...S.paxRow,borderLeft:`3px solid ${color}`}}>
+                      <div key={p.id} style={{...S.paxRow,borderLeft:`3px solid ${color}`}}>
                         <div>
                           <div style={S.paxName}>{p.name}</div>
                           <div style={S.paxMeta}>
@@ -392,7 +392,7 @@ function App() {
                         <div style={S.paxR}>
                           {tab==="arrivals"&&p.flight&&p.flight!=="TRAIN"&&(
                             <div>
-                              <StatusBadge status={p.status} loading={loadingF[<p.id>]}/>
+                              <StatusBadge status={p.status} loading={loadingF[p.id]}/>
                               <button style={{...S.iconBtn,borderColor:color}} onClick={()=>checkFlight(p)}>Check</button>
                             </div>
                           )}
