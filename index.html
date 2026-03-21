@@ -162,11 +162,24 @@ function buildRuns(people) {
   return runs;
 }
 
+function isLandedStatus(status) {
+  return typeof status === "string" && /^landed\b/i.test(status.trim());
+}
+
+function landedTimeFromStatus(status) {
+  const m = /^landed(?:\s+(.+))?$/i.exec(String(status).trim());
+  return m && m[1] ? m[1].trim() : "";
+}
+
 function StatusBadge({status,loading}) {
   if (loading) return <span style={S.badge.checking}>checking...</span>;
   if (!status)  return <span style={S.badge.unknown}>No status</span>;
+  if (isLandedStatus(status)) {
+    const t = landedTimeFromStatus(status);
+    return <span style={S.badge.landed}>{t ? `Landed · ${t}` : "Landed"}</span>;
+  }
   const sl=status.toLowerCase();
-  if (sl.includes("land")||sl.includes("arriv")||sl.includes("on time")) return <span style={S.badge.ontime}>OK {status}</span>;
+  if (sl.includes("arriv")||sl.includes("on time")) return <span style={S.badge.ontime}>OK {status}</span>;
   if (sl.includes("delay")||sl.includes("late"))  return <span style={S.badge.delayed}>DELAYED {status}</span>;
   if (sl.includes("cancel"))                       return <span style={S.badge.cancelled}>CANCELLED {status}</span>;
   return <span style={S.badge.unknown}>{status}</span>;
@@ -280,6 +293,7 @@ function App() {
 
   async function checkFlight(person) {
     if (!person.flight||person.flight==="TRAIN") return;
+    if (isLandedStatus(person.status)) return;
     setLoadingF(p=>({...p,[person.id]:true}));
     try {
       const iata=person.flight.replace(/\s/g,"").toUpperCase();
@@ -287,7 +301,10 @@ function App() {
       const f=data?.data?.[0]; let txt="No data found";
       if(f){
         const fs=f.flight_status,arr=f.arrival;
-        if(fs==="landed")     txt=`Landed ${arr?.actual?new Date(arr.actual).toLocaleTimeString("en-AU",{hour:"2-digit",minute:"2-digit"}):""}`.trim();
+        if(fs==="landed"){
+          const at = arr?.actual ? new Date(arr.actual).toLocaleTimeString("en-AU",{hour:"2-digit",minute:"2-digit"}) : "";
+          txt = at ? `Landed ${at}` : "Landed";
+        }
         else if(fs==="active")    txt="In flight";
         else if(fs==="scheduled") txt=arr?.delay?`Delayed ~${arr.delay} min`:"On time";
         else if(fs==="cancelled") txt="Cancelled";
@@ -298,7 +315,12 @@ function App() {
     setLoadingF(p=>({...p,[person.id]:false}));
   }
 
-  async function checkRunFlights(run){for(const p of run)await checkFlight(p);}
+  async function checkRunFlights(run){
+    for (const p of run) {
+      if (!p.flight || p.flight === "TRAIN" || isLandedStatus(p.status)) continue;
+      await checkFlight(p);
+    }
+  }
 
   function closeResetModal() {
     setResetOpen(false);
@@ -550,6 +572,7 @@ function App() {
               const noMobile   = run.some(p=>!p.mobile||p.mobile==="TBC");
               const pct        = Math.round((run.length/MAX_PAX)*100);
               const capColor   = pct>=90?BRAND.red:pct>=70?BRAND.yellow:BRAND.blueLight;
+              const canBulkCheck = tab==="arrivals" && run.some((p)=>p.flight && p.flight!=="TRAIN" && !isLandedStatus(p.status));
 
               return (
                 <div key={ri} style={{...S.runCard,borderTopColor:color}}>
@@ -559,7 +582,7 @@ function App() {
                       {isToday&&<span style={S.todayPill}>TODAY</span>}
                       <span style={S.runDt}>{fmtDate(run[0].date)}</span>
                     </div>
-                    {tab==="arrivals"&&flights.length>0&&(
+                    {canBulkCheck&&(
                       <button style={{...S.checkBtn,borderColor:color,color}} onClick={()=>checkRunFlights(run)}>
                         Check flights
                       </button>
@@ -630,9 +653,11 @@ function App() {
                         </div>
                         <div style={S.paxR}>
                           {tab==="arrivals"&&p.flight&&p.flight!=="TRAIN"&&(
-                            <div>
-                              <StatusBadge status={p.status} loading={loadingF[p.id]}/>
-                              <button style={{...S.iconBtn,borderColor:color}} onClick={()=>checkFlight(p)}>Check</button>
+                            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                              {(p.status||loadingF[p.id])&&<StatusBadge status={p.status} loading={loadingF[p.id]}/>}
+                              {!isLandedStatus(p.status)&&(
+                                <button type="button" style={{...S.iconBtn,borderColor:color}} onClick={()=>checkFlight(p)}>Check</button>
+                              )}
                             </div>
                           )}
                           <button style={{...S.iconBtn,borderColor:BRAND.border}} onClick={()=>handleEdit(p)}>Edit</button>
@@ -720,7 +745,7 @@ function App() {
                                     {p.note&&<span>{p.note}</span>}
                                   </div>
                                 )}
-                                {p.flight&&p.flight!=="TRAIN"&&(
+                                {p.flight&&p.flight!=="TRAIN"&&(p.status||loadingF[p.id])&&(
                                   <div style={{marginTop:8}}>
                                     <StatusBadge status={p.status} loading={loadingF[p.id]}/>
                                   </div>
@@ -956,6 +981,7 @@ modal:     {background:BRAND.cardBg,border:`1px solid ${BRAND.border}`,borderRad
 resetPassInput:{display:"block",width:"100%",boxSizing:"border-box",background:BRAND.darkBg,border:`1px solid ${BRAND.border}`,color:BRAND.offWhite,padding:"10px 13px",borderRadius:4,fontSize:16,outline:"none"},
 toast:     {position:"fixed",bottom:28,left:"50%",transform:"translateX(-50%)",color:BRAND.white,padding:"10px 26px",borderRadius:6,fontSize:14,fontWeight:"bold",zIndex:200},
 badge:{
+  landed:   {background:"rgba(0,140,90,0.22)",color:"#6ee7a8",padding:"4px 10px",borderRadius:4,fontSize:12,fontWeight:"bold",fontFamily:"monospace",border:"1px solid rgba(0,180,100,0.45)"},
   ontime:   {background:"rgba(0,180,80,0.15)",color:"#50d890",padding:"2px 9px",borderRadius:4,fontSize:11,fontFamily:"monospace",border:"1px solid rgba(0,180,80,0.3)"},
   delayed:  {background:"rgba(245,168,0,0.12)",color:BRAND.yellow,padding:"2px 9px",borderRadius:4,fontSize:11,fontFamily:"monospace",border:"1px solid rgba(245,168,0,0.3)"},
   cancelled:{background:"rgba(208,2,27,0.12)",color:"#ff6070",padding:"2px 9px",borderRadius:4,fontSize:11,fontFamily:"monospace",border:"1px solid rgba(208,2,27,0.3)"},
