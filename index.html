@@ -68,6 +68,182 @@ function fmtDate(d) { return new Date(d+"T00:00:00").toLocaleDateString("en-AU",
 function uid() { return "u"+Math.random().toString(36).slice(2,9); }
 function todayStr() { return new Date().toISOString().split("T")[0]; }
 
+function parseCsvRows(text) {
+  const rows = [];
+  let i = 0, field = "", row = [], inQuotes = false;
+  const len = text.length;
+  const pushField = () => { row.push(field); field = ""; };
+  const pushRow = () => { rows.push(row); row = []; };
+  while (i < len) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (i + 1 < len && text[i + 1] === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += c; i++; continue;
+    }
+    if (c === '"') { inQuotes = true; i++; continue; }
+    if (c === ",") { pushField(); i++; continue; }
+    if (c === "\r") { i++; continue; }
+    if (c === "\n") { pushField(); pushRow(); i++; continue; }
+    field += c; i++;
+  }
+  pushField();
+  if (row.length > 1 || (row.length === 1 && row[0] !== "")) pushRow();
+  return rows;
+}
+
+function headerToField(header) {
+  const n = header.trim().toLowerCase().replace(/\s+/g, " ");
+  const pairs = [
+    [["name", "full name", "passenger", "athlete", "member"], "name"],
+    [["mobile", "phone", "mobile number", "tel", "mobile no"], "mobile"],
+    [["date", "arrival date", "landing date", "day", "arrive date"], "date"],
+    [["time", "landing time", "arrival time", "eta"], "time"],
+    [["flight", "flight number", "flt", "flight no"], "flight"],
+    [["note", "notes", "comments", "remark"], "note"],
+  ];
+  for (const [aliases, field] of pairs) {
+    if (aliases.includes(n)) return field;
+  }
+  return null;
+}
+
+function parseDateCell(s) {
+  const t = (s || "").trim();
+  if (!t) return "";
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  if (iso) return t;
+  const au = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2}|\d{4})$/.exec(t);
+  if (au) {
+    let y = parseInt(au[3], 10);
+    if (y < 100) y += 2000;
+    const d = au[1].padStart(2, "0"), m = au[2].padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return "";
+}
+
+function parseTimeCell(raw) {
+  if (raw === null || raw === undefined || raw === "") return "";
+  if (typeof raw === "number" && !Number.isNaN(raw)) {
+    const n = raw;
+    if (n > 0 && n < 1) {
+      const secs = Math.round(n * 86400);
+      const h = Math.floor(secs / 3600), mi = Math.floor((secs % 3600) / 60);
+      return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+    }
+    const iv = Math.round(n);
+    if (iv >= 100 && iv <= 2359 && iv % 100 < 60) {
+      const h = Math.floor(iv / 100), mi = iv % 100;
+      if (h < 24) return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+    }
+  }
+  let t = String(raw).trim().toLowerCase().replace(/\s+/g, "");
+  if (!t) return "";
+  t = t.replace(/(hrs?|h)$/i, "");
+  const colon = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(t);
+  if (colon) return `${colon[1].padStart(2, "0")}:${colon[2]}`;
+  const digits = /^(\d{3,4})(?:\.0+)?$/.exec(t);
+  if (digits) {
+    const r = digits[1];
+    if (r.length === 3) return `0${r[0]}:${r.slice(1)}`;
+    return `${r.slice(0, 2)}:${r.slice(2)}`;
+  }
+  return "";
+}
+
+function normalizeMobileCell(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  const digits = s.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 9) return "0" + digits;
+  return digits;
+}
+
+function normalizeFlightImport(raw) {
+  const t = String(raw ?? "").trim();
+  if (!t) return "";
+  if (/train/i.test(t)) return "TRAIN";
+  return t;
+}
+
+function rowsToArrivals(grid) {
+  if (!grid.length) return { people: [], error: "File is empty." };
+  const headers = grid[0].map((h) => String(h || "").trim());
+  const idx = {};
+  headers.forEach((h, i) => {
+    const f = headerToField(h);
+    if (f) idx[f] = i;
+  });
+  if (idx.name === undefined || idx.date === undefined || idx.time === undefined) {
+    return { people: [], error: "CSV needs header columns for name, date, and time (e.g. Name, Date, Time)." };
+  }
+  const people = [];
+  for (let r = 1; r < grid.length; r++) {
+    const row = grid[r];
+    if (!row || row.every((c) => !String(c || "").trim())) continue;
+    const name = String(row[idx.name] ?? "").trim();
+    if (!name) continue;
+    const date = parseDateCell(String(row[idx.date] ?? ""));
+    const time = parseTimeCell(row[idx.time] ?? "");
+    if (!date || !time) continue;
+    const mobRaw = idx.mobile !== undefined ? row[idx.mobile] : "";
+    people.push({
+      id: uid(),
+      name,
+      mobile: normalizeMobileCell(mobRaw),
+      date,
+      time,
+      flight: normalizeFlightImport(idx.flight !== undefined ? row[idx.flight] : ""),
+      note: idx.note !== undefined ? String(row[idx.note] ?? "").trim() : "",
+      status: null,
+    });
+  }
+  if (!people.length) return { people: [], error: "No rows with name, date, and time could be read." };
+  return { people };
+}
+
+const SAMPLE_ARRIVALS_CSV = `Name,Mobile,Date,Time,Flight,Note
+Tomo T,0417973085,2026-03-19,10:35,JQ406,
+Liam Smith,0404659711,2026-03-19,12:20,JQ438,
+Declan Burke,0466599725,2026-03-19,07:35,Q590,
+Peter kynaston,0417621828,2026-03-19,17:00,TRAIN,
+Mikey O’Sullivan,0437786151,2026-03-19,10:45,VA1447,
+Kristi Bedford,0444570963,2026-03-19,10:45,VA1447,
+Jas Lawrence,0412508414,2026-03-19,12:20,JQ438,
+Brady Fulcher,0431803161,2026-03-20,09:30,JQ404,
+Flynn Mathrick,,2026-03-20,11:15,JQ434,
+Jack Travis,,2026-03-20,11:15,JQ434,
+Aly Schapper,,2026-03-20,11:15,JQ434,
+Sarah Prendergast,,2026-03-20,11:15,JQ434,
+Issy Heather,0437389582,2026-03-20,11:15,JQ434,
+Oliver Gibbon,0490292460,2026-03-20,21:40,JQ448,
+Amy Neville,0452188022,2026-03-20,07:50,JQ498,
+Mandi B,0401563150,2026-03-20,07:50,JQ498,
+Damion Burrage,0433141224,2026-03-20,08:20,JQ498,
+Jack Rigby,0437820665,2026-03-20,10:45,QF1514,
+Lyndon Mills,0422602224,2026-03-20,10:45,VA1447,
+Jack Read,0427440907,2026-03-20,10:45,VA1447,
+Mick Jarvis,0403329204,2026-03-20,10:45,VA1447,
+Adam Farr,0414807832,2026-03-20,10:45,VA1447,
+Dobby (Josh Clement),0448953151,2026-03-20,12:20,VA739,
+Matthew Hunt,0451950115,2026-03-20,21:30,VA761,
+Daniel Petterson,0468513418,2026-03-20,18:40,VA859,
+Sam Ranson,0435477497,2026-03-20,08:35,QF1512,
+Scott Anderson,0417242963,2026-03-21,08:40,VA509,
+Ludo catherine,0402364433,2026-03-23,06:30,JQ400,
+Freddy Obitz,0401483914,2026-03-23,06:30,JQ400,
+vaf,,2026-03-19,21:30,VA716,
+Julian Vega,0427949969,2026-03-26,07:40,JQ402,
+Warren & Sandy Fry,0408218438,2026-03-19,10:45,VA1447,
+Stephen harrowing,,2026-03-19,11:00,Compound,
+L Smythe,0484693470,2026-03-20,12:00,JQ893,
+Dan Andrew,0423000460,2026-03-20,10:00,Crystal Beach Appartments,
+`;
+
 function buildRuns(people) {
   const sorted=[...people].sort((a,b)=>a.date!==b.date?a.date.localeCompare(b.date):a.time.localeCompare(b.time));
   const runs=[]; let cur=[],base=null;
@@ -99,6 +275,7 @@ function WaveBar() {
 }
 
 function App() {
+  const csvInputRef = React.useRef(null);
   const [tab,setTab]              = useState("arrivals");
   const [arrivals,setArrivals]    = useState(()=>{try{return JSON.parse(localStorage.getItem(STORAGE_KEY_ARR))||[];}catch{return [];}});
   const [departures,setDepartures]= useState(()=>{try{return JSON.parse(localStorage.getItem(STORAGE_KEY_DEP))||[];}catch{return [];}});
@@ -157,6 +334,51 @@ function App() {
   }
 
   async function checkRunFlights(run){for(const p of run)await checkFlight(p);}
+
+  function applyImportedArrivals(text, mode) {
+    const grid = parseCsvRows(text.replace(/^\uFEFF/, ""));
+    const res = rowsToArrivals(grid);
+    if (res.error) { showToast(res.error, "error"); return; }
+    if (mode === "replace") {
+      setArrivals(res.people);
+      showToast(`Loaded ${res.people.length} sample arrival(s)`);
+    } else {
+      setArrivals((prev) => [...prev, ...res.people]);
+      showToast(`Imported ${res.people.length} arrival(s)`);
+    }
+    setTab("arrivals");
+    setView("runs");
+    setFilter("all");
+  }
+
+  async function handleArrivalsCsvFile(e) {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const text = await f.text();
+      applyImportedArrivals(text, "append");
+    } catch {
+      showToast("Could not read that file.", "error");
+    }
+  }
+
+  async function loadSampleArrivals() {
+    let text = "";
+    try {
+      const r = await fetch("sample-arrivals.csv", { cache: "no-store" });
+      if (r.ok) text = await r.text();
+    } catch (_) {}
+    if (!text) text = SAMPLE_ARRIVALS_CSV;
+    const grid = parseCsvRows(text.replace(/^\uFEFF/, ""));
+    const res = rowsToArrivals(grid);
+    if (res.error) { showToast(res.error, "error"); return; }
+    const ok = window.confirm(
+      `Replace all current arrivals (${arrivals.length}) with ${res.people.length} sample rows?`
+    );
+    if (!ok) return;
+    applyImportedArrivals(text, "replace");
+  }
 
   return (
     <div style={S.app}>
@@ -218,6 +440,17 @@ function App() {
           ))}
         </div>
         <div style={S.subR}>
+          {tab==="arrivals"&&(
+            <>
+              <input ref={csvInputRef} type="file" accept=".csv,text/csv" style={{display:"none"}} onChange={handleArrivalsCsvFile}/>
+              <button type="button" style={S.subBtn} onClick={()=>csvInputRef.current&&csvInputRef.current.click()}>
+                Import CSV
+              </button>
+              <button type="button" style={S.subBtn} onClick={loadSampleArrivals}>
+                Load sample
+              </button>
+            </>
+          )}
           {allDates.length>1&&(
             <select style={S.sel} value={filterDate} onChange={e=>setFilter(e.target.value)}>
               <option value="all">All dates ({people.length})</option>
