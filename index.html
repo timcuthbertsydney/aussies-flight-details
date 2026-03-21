@@ -35,7 +35,7 @@ const BUFFER_MIN = 20;
 const STORAGE_KEY_ARR = "gc_arrivals_v4";
 const STORAGE_KEY_DEP = "gc_departures_v4";
 const RESET_PASSCODE = "2095";
-const API_KEY = "1035e4c5f31dd79147fb1653cb7cb7b6";
+const API_KEY = "ca8680b614b558f10d8e78f4f05467b5";
 
 const BRAND = {
 red:        "#D0021B",
@@ -200,6 +200,7 @@ function isHistoricalArrival(person) {
 function isTerminalFlightStatus(status, person) {
   if (!status) return false;
   if (isLandedStatus(status)) return true;
+  if (/^Flight lookup/i.test(String(status))) return true;
   const sl = String(status).toLowerCase();
   if (sl.includes("cancel")) return true;
   if (status === "No data found") return isHistoricalArrival(person);
@@ -214,9 +215,21 @@ function flightGroupKey(person) {
 async function fetchFlightStatusText(person) {
   const iata = person.flight.replace(/\s/g, "").toUpperCase();
   const data = await fetch(
-    `https://api.aviationstack.com/v1/flights?access_key=${API_KEY}&flight_iata=${iata}&flight_date=${person.date}`
+    `https://api.aviationstack.com/v1/flights?access_key=${API_KEY}&flight_iata=${encodeURIComponent(iata)}&flight_date=${encodeURIComponent(person.date)}`
   ).then((r) => r.json());
-  const f = data?.data?.[0];
+  if (data?.error) {
+    const code = data.error.code || "";
+    const msg = (data.error.info || data.error.message || "API error").trim();
+    if (code === "function_access_restricted" || /subscription|plan|not support/i.test(msg)) {
+      return "Flight lookup blocked (API plan)";
+    }
+    if (code === "invalid_access_key" || code === "missing_access_key") {
+      return "Flight lookup: bad API key";
+    }
+    return msg.length > 72 ? `${msg.slice(0, 69)}…` : msg;
+  }
+  const list = data?.data;
+  const f = Array.isArray(list) && list.length ? list[0] : null;
   let txt = "No data found";
   if (f) {
     const fs = f.flight_status;
