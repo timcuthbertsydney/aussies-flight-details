@@ -69,48 +69,14 @@ function addMinutes(t,mins) {
 function fmtTime(t) { return t+" hrs"; }
 function fmtDate(d) { return new Date(d+"T00:00:00").toLocaleDateString("en-AU",{weekday:"short",day:"numeric",month:"short"}); }
 function uid() { return "u"+Math.random().toString(36).slice(2,9); }
-function todayStr() { return new Date().toISOString().split("T")[0]; }
-
-function normalizeDepartureDateInput(s) {
-  const t = (s || "").trim();
-  if (!t) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-  const au = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2}|\d{4})$/.exec(t);
-  if (au) {
-    let y = parseInt(au[3], 10);
-    if (y < 100) y += 2000;
-    const d = au[1].padStart(2, "0"), m = au[2].padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  return "";
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function normalizeDepartureTimeInput(s) {
-  const raw = (s || "").trim();
-  if (!raw) return "";
-  const isPm = /\bpm\b|pm$/i.test(raw);
-  const isAm = /\bam\b|am$/i.test(raw);
-  let t = raw.replace(/\s+/g, "").replace(/(am|pm)$/i, "");
-  t = t.replace(/(hrs?|h)$/i, "");
-  const colon = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(t);
-  if (colon) {
-    let h = parseInt(colon[1], 10), m = parseInt(colon[2], 10);
-    if (isPm && h < 12) h += 12;
-    if (isAm && h === 12) h = 0;
-    if (h < 24 && m < 60) return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-    return "";
-  }
-  const digits = /^(\d{3,4})$/.exec(t);
-  if (digits) {
-    const r = digits[1];
-    let h, m;
-    if (r.length === 3) { h = parseInt(r[0], 10); m = parseInt(r.slice(1), 10); }
-    else { h = parseInt(r.slice(0, 2), 10); m = parseInt(r.slice(2), 10); }
-    if (isPm && h < 12) h += 12;
-    if (isAm && h === 12) h = 0;
-    if (m < 60 && h < 24) return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  }
-  return "";
+function nowTimeStr() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 const DEFAULT_ARRIVAL_ROWS = [
@@ -258,26 +224,20 @@ function App() {
   function showToast(msg,type="success"){setToast({msg,type});setTimeout(()=>setToast(null),3000);}
   function resetForm(){setForm({name:"",mobile:"",date:"",time:"",flight:"",note:""});setEditId(null);}
 
-  function handleSubmit() {
-    if (!form.name.trim()){showToast("Name is required","error");return;}
-    let row = { ...form };
+  function beginAddPerson() {
+    setEditId(null);
     if (tab==="departures") {
-      if (!String(form.date).trim() || !String(form.time).trim()) {
-        showToast("Date and departure time are required","error");
-        return;
-      }
-      const d = normalizeDepartureDateInput(form.date);
-      const tm = normalizeDepartureTimeInput(form.time);
-      if (!d || !tm) {
-        showToast("Could not read date or time. Try e.g. 20/03/26 and 14:30, or 2026-03-20 and 2:30 pm.","error");
-        return;
-      }
-      row = { ...form, date: d, time: tm };
+      setForm({ name:"", mobile:"", date: todayStr(), time: nowTimeStr(), flight:"", note:"" });
     } else {
-      if (!form.date || !form.time){showToast("Name, date and time are required","error");return;}
+      setForm({ name:"", mobile:"", date:"", time:"", flight:"", note:"" });
     }
-    if (editId){setPeople(prev=>prev.map(p=>p.id===editId?{...p,...row}:p));showToast("Updated");}
-    else{setPeople(prev=>[...prev,{id:uid(),...row,status:null}]);showToast("Added to schedule");}
+    setView("add");
+  }
+
+  function handleSubmit() {
+    if (!form.name.trim()||!form.date||!form.time){showToast("Name, date and time are required","error");return;}
+    if (editId){setPeople(prev=>prev.map(p=>p.id===editId?{...p,...form}:p));showToast("Updated");}
+    else{setPeople(prev=>[...prev,{id:uid(),...form,status:null}]);showToast("Added to schedule");}
     resetForm();setView("runs");
   }
 
@@ -395,7 +355,7 @@ function App() {
             Reset data…
           </button>
           <button style={{...S.addBtn, background: tab==="arrivals"?BRAND.yellow:BRAND.red, color: tab==="arrivals"?BRAND.blue:BRAND.white}}
-            onClick={()=>{resetForm();setView("add");}}>
+            onClick={beginAddPerson}>
             + Add Person
           </button>
         </div>
@@ -434,15 +394,27 @@ function App() {
               {[
                 {label:"Full Name *",   key:"name",   type:"text", ph:"e.g. Jane Smith"},
                 {label:"Mobile Number", key:"mobile", type:"text", ph:"04XX XXX XXX"},
-                {label:"Date *",        key:"date",   type: tab==="departures"?"text":"date", ph: tab==="departures"?"e.g. 20/03/26 or 2026-03-20":""},
-                {label: tab==="arrivals"?"Landing Time *":"Departure Time *", key:"time", type: tab==="departures"?"text":"time", ph: tab==="departures"?"e.g. 14:30, 1430, or 2:30 pm":""},
+                {label:"Date *",        key:"date",   type:"date", ph:""},
+                {label: tab==="arrivals"?"Landing Time *":"Departure Time *", key:"time", type:"time", ph:""},
                 {label:"Flight Number", key:"flight", type:"text", ph:"e.g. JQ404"},
                 {label:"Note",          key:"note",   type:"text", ph:"e.g. Special drop-off"},
               ].map(f=>(
                 <label key={f.key} style={S.lbl}>
                   <span style={S.lblTxt}>{f.label}</span>
-                  <input style={S.inp} type={f.type} placeholder={f.ph}
-                    value={form[f.key]} onChange={e=>setForm(p=>({...p,[f.key]:e.target.value}))}/>
+                  <input
+                    style={S.inp}
+                    type={f.type}
+                    placeholder={f.ph}
+                    value={form[f.key]}
+                    onChange={(e)=>setForm((p)=>({ ...p, [f.key]: e.target.value }))}
+                    onFocus={
+                      tab==="departures" && !editId && f.key==="date" && !form.date
+                        ? ()=>setForm((p)=>({ ...p, date: todayStr() }))
+                        : tab==="departures" && !editId && f.key==="time" && !form.time
+                          ? ()=>setForm((p)=>({ ...p, time: nowTimeStr() }))
+                          : undefined
+                    }
+                  />
                 </label>
               ))}
             </div>
@@ -488,7 +460,7 @@ function App() {
                 <div style={S.emptyTitle}>No {tab==="arrivals"?"arrivals":"departures"} scheduled yet</div>
                 <div style={S.emptyBody}>Add team members using the button above and the minibus run schedule will appear here automatically, grouped into runs of up to {MAX_PAX}.</div>
                 <button style={{...S.btnP, background: tab==="arrivals"?BRAND.yellow:BRAND.red, color: tab==="arrivals"?BRAND.blue:BRAND.white}}
-                  onClick={()=>setView("add")}>+ Add First Person</button>
+                  onClick={beginAddPerson}>+ Add First Person</button>
               </div>
             )}
 
