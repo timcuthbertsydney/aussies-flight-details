@@ -168,11 +168,6 @@ function isLandedStatus(status) {
   return typeof status === "string" && /^landed\b/i.test(status.trim());
 }
 
-function landedTimeFromStatus(status) {
-  const m = /^landed(?:\s+(.+))?$/i.exec(String(status).trim());
-  return m && m[1] ? m[1].trim() : "";
-}
-
 function isFlightTrackableField(flight) {
   if (!flight || !String(flight).trim()) return false;
   const raw = String(flight).trim();
@@ -212,17 +207,37 @@ function flightGroupKey(person) {
   return `${String(person.flight).replace(/\s/g, "").toUpperCase()}_${person.date}`;
 }
 
+function fmtApiArrivalTime(iso) {
+  if (!iso || typeof iso !== "string") return "";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
 function flightRecordToStatusText(f) {
   const fs = f.flight_status;
-  const arr = f.arrival;
+  const arr = f.arrival || {};
+  const estArr = fmtApiArrivalTime(arr.estimated) || fmtApiArrivalTime(arr.scheduled);
+  const actArr = fmtApiArrivalTime(arr.actual);
   if (fs === "landed") {
-    const at = arr?.actual ? new Date(arr.actual).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" }) : "";
-    return at ? `Landed ${at}` : "Landed";
+    if (actArr) return `Landed · actual ${actArr}`;
+    if (estArr) return `Landed · est ${estArr}`;
+    return "Landed";
   }
-  if (fs === "active") return "In flight";
-  if (fs === "scheduled") return arr?.delay ? `Delayed ~${arr.delay} min` : "On time";
   if (fs === "cancelled") return "Cancelled";
-  return fs || "Unknown";
+  if (fs === "active") {
+    return estArr ? `In flight · est arrival ${estArr}` : "In flight";
+  }
+  if (fs === "scheduled") {
+    const delay = arr.delay;
+    const label = delay ? `Delayed ~${delay} min` : "On time";
+    return estArr ? `${label} · est arrival ${estArr}` : label;
+  }
+  return estArr ? `${String(fs || "Status").trim()} · est arrival ${estArr}` : (fs || "Unknown");
 }
 
 async function fetchFlightStatusText(person) {
@@ -262,13 +277,13 @@ function StatusBadge({status,loading}) {
   if (loading) return <span style={S.badge.checking}>Updating…</span>;
   if (!status)  return <span style={S.badge.checking}>Fetching status…</span>;
   if (isLandedStatus(status)) {
-    const t = landedTimeFromStatus(status);
-    return <span style={S.badge.landed}>{t ? `Landed · ${t}` : "Landed"}</span>;
+    return <span style={S.badge.landed}>{status}</span>;
   }
   const sl=status.toLowerCase();
-  if (sl.includes("arriv")||sl.includes("on time")) return <span style={S.badge.ontime}>OK {status}</span>;
-  if (sl.includes("delay")||sl.includes("late"))  return <span style={S.badge.delayed}>DELAYED {status}</span>;
-  if (sl.includes("cancel"))                       return <span style={S.badge.cancelled}>CANCELLED {status}</span>;
+  if (sl.includes("cancel"))                       return <span style={S.badge.cancelled}>{status}</span>;
+  if (sl.includes("delay")||sl.includes("late"))  return <span style={S.badge.delayed}>{status}</span>;
+  if (sl.includes("in flight")||sl.includes("on time")) return <span style={S.badge.ontime}>{status}</span>;
+  if (sl.includes("arriv")) return <span style={S.badge.ontime}>{status}</span>;
   return <span style={S.badge.unknown}>{status}</span>;
 }
 
@@ -825,7 +840,7 @@ function App() {
                 <span style={{color:BRAND.textMuted}}>{allDates.length} day{allDates.length!==1?"s":""}</span>
                 {tab==="arrivals"&&(
                   <span style={{color:BRAND.textMuted,flexBasis:"100%",fontSize:12,lineHeight:1.4}}>
-                    Flight line status loads automatically and refreshes about every 2½ min (past flights are stored once they’re final).
+                    Flight status (scheduled / in flight / landed), estimated arrival time, and actual arrival once landed — updates about every 2½ min; landed rows are kept as-is.
                   </span>
                 )}
               </div>
