@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Convert Aussies arrivals xlsx to sample-arrivals.csv and refresh SAMPLE_ARRIVALS_CSV in index.html."""
+"""Convert Aussies arrivals xlsx to sample-arrivals.csv. Use --print-js to emit DEFAULT_ARRIVAL_ROWS for index.html."""
 import csv
+import json
 import re
 import sys
 from pathlib import Path
@@ -118,19 +119,20 @@ def main():
         w.writerows(out)
     print(f"Wrote {len(out)} rows to {csv_path}")
 
-    html_path = ROOT / "index.html"
-    html = html_path.read_text(encoding="utf-8")
-    c = csv_path.read_text(encoding="utf-8")
-    new_block = "const SAMPLE_ARRIVALS_CSV = `" + c.replace("\\", "\\\\").replace("`", "\\`") + "`;"
-    start = html.find("const SAMPLE_ARRIVALS_CSV = `")
-    if start == -1:
-        sys.exit("index.html: SAMPLE_ARRIVALS_CSV not found")
-    close = html.find("`;", start)
-    if close == -1:
-        sys.exit("index.html: could not find end of SAMPLE_ARRIVALS_CSV")
-    close += len("`;")
-    html_path.write_text(html[:start] + new_block + html[close:], encoding="utf-8")
-    print(f"Updated SAMPLE_ARRIVALS_CSV in {html_path}")
+    if "--print-js" in sys.argv:
+        rows_js = [
+            {
+                "name": r["Name"],
+                "mobile": r["Mobile"],
+                "date": r["Date"],
+                "time": r["Time"],
+                "flight": r["Flight"],
+                "note": r["Note"],
+            }
+            for r in out
+        ]
+        inner = ",\n".join("  " + json.dumps(x, ensure_ascii=False) for x in rows_js)
+        print(f"const DEFAULT_ARRIVAL_ROWS = [\n{inner}\n];")
 
 
 if __name__ == "__main__":

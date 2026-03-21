@@ -28,8 +28,9 @@ const MAX_PAX = 12;
 const WINDOW_MIN = 30;
 const TRAVEL_MIN = 13;
 const BUFFER_MIN = 20;
-const STORAGE_KEY_ARR = "gc_arrivals_v3";
-const STORAGE_KEY_DEP = "gc_departures_v3";
+const STORAGE_KEY_ARR = "gc_arrivals_v4";
+const STORAGE_KEY_DEP = "gc_departures_v4";
+const RESET_PASSCODE = "2095";
 const API_KEY = "1035e4c5f31dd79147fb1653cb7cb7b6";
 
 const BRAND = {
@@ -68,181 +69,69 @@ function fmtDate(d) { return new Date(d+"T00:00:00").toLocaleDateString("en-AU",
 function uid() { return "u"+Math.random().toString(36).slice(2,9); }
 function todayStr() { return new Date().toISOString().split("T")[0]; }
 
-function parseCsvRows(text) {
-  const rows = [];
-  let i = 0, field = "", row = [], inQuotes = false;
-  const len = text.length;
-  const pushField = () => { row.push(field); field = ""; };
-  const pushRow = () => { rows.push(row); row = []; };
-  while (i < len) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (i + 1 < len && text[i + 1] === '"') { field += '"'; i += 2; continue; }
-        inQuotes = false; i++; continue;
-      }
-      field += c; i++; continue;
+const DEFAULT_ARRIVAL_ROWS = [
+  { name: "Tomo T", mobile: "0417973085", date: "2026-03-19", time: "10:35", flight: "JQ406", note: "" },
+  { name: "Liam Smith", mobile: "0404659711", date: "2026-03-19", time: "12:20", flight: "JQ438", note: "" },
+  { name: "Declan Burke", mobile: "0466599725", date: "2026-03-19", time: "07:35", flight: "Q590", note: "" },
+  { name: "Peter kynaston", mobile: "0417621828", date: "2026-03-19", time: "17:00", flight: "TRAIN", note: "" },
+  { name: "Mikey O’Sullivan", mobile: "0437786151", date: "2026-03-19", time: "10:45", flight: "VA1447", note: "" },
+  { name: "Kristi Bedford", mobile: "0444570963", date: "2026-03-19", time: "10:45", flight: "VA1447", note: "" },
+  { name: "Jas Lawrence", mobile: "0412508414", date: "2026-03-19", time: "12:20", flight: "JQ438", note: "" },
+  { name: "Brady Fulcher", mobile: "0431803161", date: "2026-03-20", time: "09:30", flight: "JQ404", note: "" },
+  { name: "Flynn Mathrick", mobile: "", date: "2026-03-20", time: "11:15", flight: "JQ434", note: "" },
+  { name: "Jack Travis", mobile: "", date: "2026-03-20", time: "11:15", flight: "JQ434", note: "" },
+  { name: "Aly Schapper", mobile: "", date: "2026-03-20", time: "11:15", flight: "JQ434", note: "" },
+  { name: "Sarah Prendergast", mobile: "", date: "2026-03-20", time: "11:15", flight: "JQ434", note: "" },
+  { name: "Issy Heather", mobile: "0437389582", date: "2026-03-20", time: "11:15", flight: "JQ434", note: "" },
+  { name: "Oliver Gibbon", mobile: "0490292460", date: "2026-03-20", time: "21:40", flight: "JQ448", note: "" },
+  { name: "Amy Neville", mobile: "0452188022", date: "2026-03-20", time: "07:50", flight: "JQ498", note: "" },
+  { name: "Mandi B", mobile: "0401563150", date: "2026-03-20", time: "07:50", flight: "JQ498", note: "" },
+  { name: "Damion Burrage", mobile: "0433141224", date: "2026-03-20", time: "08:20", flight: "JQ498", note: "" },
+  { name: "Jack Rigby", mobile: "0437820665", date: "2026-03-20", time: "10:45", flight: "QF1514", note: "" },
+  { name: "Lyndon Mills", mobile: "0422602224", date: "2026-03-20", time: "10:45", flight: "VA1447", note: "" },
+  { name: "Jack Read", mobile: "0427440907", date: "2026-03-20", time: "10:45", flight: "VA1447", note: "" },
+  { name: "Mick Jarvis", mobile: "0403329204", date: "2026-03-20", time: "10:45", flight: "VA1447", note: "" },
+  { name: "Adam Farr", mobile: "0414807832", date: "2026-03-20", time: "10:45", flight: "VA1447", note: "" },
+  { name: "Dobby (Josh Clement)", mobile: "0448953151", date: "2026-03-20", time: "12:20", flight: "VA739", note: "" },
+  { name: "Matthew Hunt", mobile: "0451950115", date: "2026-03-20", time: "21:30", flight: "VA761", note: "" },
+  { name: "Daniel Petterson", mobile: "0468513418", date: "2026-03-20", time: "18:40", flight: "VA859", note: "" },
+  { name: "Sam Ranson", mobile: "0435477497", date: "2026-03-20", time: "08:35", flight: "QF1512", note: "" },
+  { name: "Scott Anderson", mobile: "0417242963", date: "2026-03-21", time: "08:40", flight: "VA509", note: "" },
+  { name: "Ludo catherine", mobile: "0402364433", date: "2026-03-23", time: "06:30", flight: "JQ400", note: "" },
+  { name: "Freddy Obitz", mobile: "0401483914", date: "2026-03-23", time: "06:30", flight: "JQ400", note: "" },
+  { name: "vaf", mobile: "", date: "2026-03-19", time: "21:30", flight: "VA716", note: "" },
+  { name: "Julian Vega", mobile: "0427949969", date: "2026-03-26", time: "07:40", flight: "JQ402", note: "" },
+  { name: "Warren & Sandy Fry", mobile: "0408218438", date: "2026-03-19", time: "10:45", flight: "VA1447", note: "" },
+  { name: "Stephen harrowing", mobile: "", date: "2026-03-19", time: "11:00", flight: "Compound", note: "" },
+  { name: "L Smythe", mobile: "0484693470", date: "2026-03-20", time: "12:00", flight: "JQ893", note: "" },
+  { name: "Dan Andrew", mobile: "0423000460", date: "2026-03-20", time: "10:00", flight: "Crystal Beach Appartments", note: "" },
+];
+
+function materializeDefaultArrivals() {
+  return DEFAULT_ARRIVAL_ROWS.map((r) => ({ ...r, id: uid(), status: null }));
+}
+
+function loadStoredArrivals() {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY_ARR);
+    if (s !== null) {
+      const p = JSON.parse(s);
+      if (Array.isArray(p)) return p;
     }
-    if (c === '"') { inQuotes = true; i++; continue; }
-    if (c === ",") { pushField(); i++; continue; }
-    if (c === "\r") { i++; continue; }
-    if (c === "\n") { pushField(); pushRow(); i++; continue; }
-    field += c; i++;
-  }
-  pushField();
-  if (row.length > 1 || (row.length === 1 && row[0] !== "")) pushRow();
-  return rows;
+  } catch (_) {}
+  return materializeDefaultArrivals();
 }
 
-function headerToField(header) {
-  const n = header.trim().toLowerCase().replace(/\s+/g, " ");
-  const pairs = [
-    [["name", "full name", "passenger", "athlete", "member"], "name"],
-    [["mobile", "phone", "mobile number", "tel", "mobile no"], "mobile"],
-    [["date", "arrival date", "landing date", "day", "arrive date"], "date"],
-    [["time", "landing time", "arrival time", "eta"], "time"],
-    [["flight", "flight number", "flt", "flight no"], "flight"],
-    [["note", "notes", "comments", "remark"], "note"],
-  ];
-  for (const [aliases, field] of pairs) {
-    if (aliases.includes(n)) return field;
-  }
-  return null;
-}
-
-function parseDateCell(s) {
-  const t = (s || "").trim();
-  if (!t) return "";
-  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
-  if (iso) return t;
-  const au = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2}|\d{4})$/.exec(t);
-  if (au) {
-    let y = parseInt(au[3], 10);
-    if (y < 100) y += 2000;
-    const d = au[1].padStart(2, "0"), m = au[2].padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  return "";
-}
-
-function parseTimeCell(raw) {
-  if (raw === null || raw === undefined || raw === "") return "";
-  if (typeof raw === "number" && !Number.isNaN(raw)) {
-    const n = raw;
-    if (n > 0 && n < 1) {
-      const secs = Math.round(n * 86400);
-      const h = Math.floor(secs / 3600), mi = Math.floor((secs % 3600) / 60);
-      return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
+function loadStoredDepartures() {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY_DEP);
+    if (s !== null) {
+      const p = JSON.parse(s);
+      if (Array.isArray(p)) return p;
     }
-    const iv = Math.round(n);
-    if (iv >= 100 && iv <= 2359 && iv % 100 < 60) {
-      const h = Math.floor(iv / 100), mi = iv % 100;
-      if (h < 24) return `${String(h).padStart(2, "0")}:${String(mi).padStart(2, "0")}`;
-    }
-  }
-  let t = String(raw).trim().toLowerCase().replace(/\s+/g, "");
-  if (!t) return "";
-  t = t.replace(/(hrs?|h)$/i, "");
-  const colon = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(t);
-  if (colon) return `${colon[1].padStart(2, "0")}:${colon[2]}`;
-  const digits = /^(\d{3,4})(?:\.0+)?$/.exec(t);
-  if (digits) {
-    const r = digits[1];
-    if (r.length === 3) return `0${r[0]}:${r.slice(1)}`;
-    return `${r.slice(0, 2)}:${r.slice(2)}`;
-  }
-  return "";
+  } catch (_) {}
+  return [];
 }
-
-function normalizeMobileCell(raw) {
-  const s = String(raw ?? "").trim();
-  if (!s) return "";
-  const digits = s.replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits.length === 9) return "0" + digits;
-  return digits;
-}
-
-function normalizeFlightImport(raw) {
-  const t = String(raw ?? "").trim();
-  if (!t) return "";
-  if (/train/i.test(t)) return "TRAIN";
-  return t;
-}
-
-function rowsToArrivals(grid) {
-  if (!grid.length) return { people: [], error: "File is empty." };
-  const headers = grid[0].map((h) => String(h || "").trim());
-  const idx = {};
-  headers.forEach((h, i) => {
-    const f = headerToField(h);
-    if (f) idx[f] = i;
-  });
-  if (idx.name === undefined || idx.date === undefined || idx.time === undefined) {
-    return { people: [], error: "CSV needs header columns for name, date, and time (e.g. Name, Date, Time)." };
-  }
-  const people = [];
-  for (let r = 1; r < grid.length; r++) {
-    const row = grid[r];
-    if (!row || row.every((c) => !String(c || "").trim())) continue;
-    const name = String(row[idx.name] ?? "").trim();
-    if (!name) continue;
-    const date = parseDateCell(String(row[idx.date] ?? ""));
-    const time = parseTimeCell(row[idx.time] ?? "");
-    if (!date || !time) continue;
-    const mobRaw = idx.mobile !== undefined ? row[idx.mobile] : "";
-    people.push({
-      id: uid(),
-      name,
-      mobile: normalizeMobileCell(mobRaw),
-      date,
-      time,
-      flight: normalizeFlightImport(idx.flight !== undefined ? row[idx.flight] : ""),
-      note: idx.note !== undefined ? String(row[idx.note] ?? "").trim() : "",
-      status: null,
-    });
-  }
-  if (!people.length) return { people: [], error: "No rows with name, date, and time could be read." };
-  return { people };
-}
-
-const SAMPLE_ARRIVALS_CSV = `Name,Mobile,Date,Time,Flight,Note
-Tomo T,0417973085,2026-03-19,10:35,JQ406,
-Liam Smith,0404659711,2026-03-19,12:20,JQ438,
-Declan Burke,0466599725,2026-03-19,07:35,Q590,
-Peter kynaston,0417621828,2026-03-19,17:00,TRAIN,
-Mikey O’Sullivan,0437786151,2026-03-19,10:45,VA1447,
-Kristi Bedford,0444570963,2026-03-19,10:45,VA1447,
-Jas Lawrence,0412508414,2026-03-19,12:20,JQ438,
-Brady Fulcher,0431803161,2026-03-20,09:30,JQ404,
-Flynn Mathrick,,2026-03-20,11:15,JQ434,
-Jack Travis,,2026-03-20,11:15,JQ434,
-Aly Schapper,,2026-03-20,11:15,JQ434,
-Sarah Prendergast,,2026-03-20,11:15,JQ434,
-Issy Heather,0437389582,2026-03-20,11:15,JQ434,
-Oliver Gibbon,0490292460,2026-03-20,21:40,JQ448,
-Amy Neville,0452188022,2026-03-20,07:50,JQ498,
-Mandi B,0401563150,2026-03-20,07:50,JQ498,
-Damion Burrage,0433141224,2026-03-20,08:20,JQ498,
-Jack Rigby,0437820665,2026-03-20,10:45,QF1514,
-Lyndon Mills,0422602224,2026-03-20,10:45,VA1447,
-Jack Read,0427440907,2026-03-20,10:45,VA1447,
-Mick Jarvis,0403329204,2026-03-20,10:45,VA1447,
-Adam Farr,0414807832,2026-03-20,10:45,VA1447,
-Dobby (Josh Clement),0448953151,2026-03-20,12:20,VA739,
-Matthew Hunt,0451950115,2026-03-20,21:30,VA761,
-Daniel Petterson,0468513418,2026-03-20,18:40,VA859,
-Sam Ranson,0435477497,2026-03-20,08:35,QF1512,
-Scott Anderson,0417242963,2026-03-21,08:40,VA509,
-Ludo catherine,0402364433,2026-03-23,06:30,JQ400,
-Freddy Obitz,0401483914,2026-03-23,06:30,JQ400,
-vaf,,2026-03-19,21:30,VA716,
-Julian Vega,0427949969,2026-03-26,07:40,JQ402,
-Warren & Sandy Fry,0408218438,2026-03-19,10:45,VA1447,
-Stephen harrowing,,2026-03-19,11:00,Compound,
-L Smythe,0484693470,2026-03-20,12:00,JQ893,
-Dan Andrew,0423000460,2026-03-20,10:00,Crystal Beach Appartments,
-`;
 
 function buildRuns(people) {
   const sorted=[...people].sort((a,b)=>a.date!==b.date?a.date.localeCompare(b.date):a.time.localeCompare(b.time));
@@ -275,10 +164,9 @@ function WaveBar() {
 }
 
 function App() {
-  const csvInputRef = React.useRef(null);
   const [tab,setTab]              = useState("arrivals");
-  const [arrivals,setArrivals]    = useState(()=>{try{return JSON.parse(localStorage.getItem(STORAGE_KEY_ARR))||[];}catch{return [];}});
-  const [departures,setDepartures]= useState(()=>{try{return JSON.parse(localStorage.getItem(STORAGE_KEY_DEP))||[];}catch{return [];}});
+  const [arrivals,setArrivals]    = useState(()=>loadStoredArrivals());
+  const [departures,setDepartures]= useState(()=>loadStoredDepartures());
   const [view,setView]            = useState("runs");
   const [form,setForm]            = useState({name:"",mobile:"",date:"",time:"",flight:"",note:""});
   const [editId,setEditId]        = useState(null);
@@ -286,6 +174,8 @@ function App() {
   const [loadingF,setLoadingF]    = useState({});
   const [toast,setToast]          = useState(null);
   const [delConfirm,setDelConfirm]= useState(null);
+  const [resetOpen,setResetOpen]  = useState(false);
+  const [resetCode,setResetCode]  = useState("");
 
   useEffect(()=>{try{localStorage.setItem(STORAGE_KEY_ARR,JSON.stringify(arrivals));}catch{}},[arrivals]);
   useEffect(()=>{try{localStorage.setItem(STORAGE_KEY_DEP,JSON.stringify(departures));}catch{}},[departures]);
@@ -343,49 +233,25 @@ function App() {
 
   async function checkRunFlights(run){for(const p of run)await checkFlight(p);}
 
-  function applyImportedArrivals(text, mode) {
-    const grid = parseCsvRows(text.replace(/^\uFEFF/, ""));
-    const res = rowsToArrivals(grid);
-    if (res.error) { showToast(res.error, "error"); return; }
-    if (mode === "replace") {
-      setArrivals(res.people);
-      showToast(`Loaded ${res.people.length} sample arrival(s)`);
-    } else {
-      setArrivals((prev) => [...prev, ...res.people]);
-      showToast(`Imported ${res.people.length} arrival(s)`);
+  function closeResetModal() {
+    setResetOpen(false);
+    setResetCode("");
+  }
+
+  function performResetAllData() {
+    if (String(resetCode).trim() !== RESET_PASSCODE) {
+      showToast("Incorrect passcode", "error");
+      return;
     }
+    setArrivals(materializeDefaultArrivals());
+    setDepartures([]);
+    setLoadingF({});
+    setFilter("all");
     setTab("arrivals");
     setView("runs");
-    setFilter("all");
-  }
-
-  async function handleArrivalsCsvFile(e) {
-    const f = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if (!f) return;
-    try {
-      const text = await f.text();
-      applyImportedArrivals(text, "append");
-    } catch {
-      showToast("Could not read that file.", "error");
-    }
-  }
-
-  async function loadSampleArrivals() {
-    let text = "";
-    try {
-      const r = await fetch("sample-arrivals.csv", { cache: "no-store" });
-      if (r.ok) text = await r.text();
-    } catch (_) {}
-    if (!text) text = SAMPLE_ARRIVALS_CSV;
-    const grid = parseCsvRows(text.replace(/^\uFEFF/, ""));
-    const res = rowsToArrivals(grid);
-    if (res.error) { showToast(res.error, "error"); return; }
-    const ok = window.confirm(
-      `Replace all current arrivals (${arrivals.length}) with ${res.people.length} sample rows?`
-    );
-    if (!ok) return;
-    applyImportedArrivals(text, "replace");
+    setDelConfirm(null);
+    closeResetModal();
+    showToast("All data cleared. Default arrivals restored.");
   }
 
   return (
@@ -401,7 +267,7 @@ function App() {
           <div style={S.logoArea}>
             <div style={S.logoCircle}>
               <div style={S.logoInner}>
-                <div style={{fontSize:26,lineHeight:1}} title="Powercraft duck">🦆</div>
+                <img src="assets/duck.png" alt="" width={44} height={44} style={{display:"block",width:44,height:44,objectFit:"contain"}}/>
               </div>
             </div>
             <div>
@@ -448,17 +314,9 @@ function App() {
           ))}
         </div>
         <div style={S.subR}>
-          {tab==="arrivals"&&(
-            <>
-              <input ref={csvInputRef} type="file" accept=".csv,text/csv" style={{display:"none"}} onChange={handleArrivalsCsvFile}/>
-              <button type="button" style={S.subBtn} onClick={()=>csvInputRef.current&&csvInputRef.current.click()}>
-                Import CSV
-              </button>
-              <button type="button" style={S.subBtn} onClick={loadSampleArrivals}>
-                Load sample
-              </button>
-            </>
-          )}
+          <button type="button" style={{...S.subBtn,color:BRAND.textDim}} onClick={()=>{setResetOpen(true);setResetCode("");}}>
+            Reset data…
+          </button>
           <button style={{...S.addBtn, background: tab==="arrivals"?BRAND.yellow:BRAND.red, color: tab==="arrivals"?BRAND.blue:BRAND.white}}
             onClick={()=>{resetForm();setView("add");}}>
             + Add Person
@@ -685,6 +543,30 @@ function App() {
         </div>
       )}
 
+      {resetOpen&&(
+        <div style={S.overlay}>
+          <div style={S.modal}>
+            <h3 style={{margin:"0 0 10px",color:BRAND.offWhite}}>Clear all data?</h3>
+            <p style={{margin:"0 0 14px",color:BRAND.textMuted,fontSize:14,lineHeight:1.55}}>
+              This deletes every arrival and departure, then restores the default arrival list. Enter the passcode to continue.
+            </p>
+            <input
+              type="password"
+              autoFocus
+              value={resetCode}
+              onChange={(e)=>setResetCode(e.target.value)}
+              style={S.resetPassInput}
+              placeholder="Passcode"
+              onKeyDown={(e)=>{if(e.key==="Enter")performResetAllData();}}
+            />
+            <div style={{display:"flex",gap:10,marginTop:18,flexWrap:"wrap"}}>
+              <button type="button" style={{...S.btnP,background:BRAND.red,color:BRAND.white}} onClick={performResetAllData}>Erase and restore defaults</button>
+              <button type="button" style={S.btnG} onClick={closeResetModal}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast&&(
         <div style={{...S.toast,background:toast.type==="error"?BRAND.red:BRAND.blue}}>
           {toast.msg}
@@ -772,7 +654,8 @@ paxR:      {display:"flex",alignItems:"center",gap:6},
 iconBtn:   {background:"transparent",border:"1px solid",color:BRAND.textDim,padding:"4px 8px",borderRadius:4,cursor:"pointer",fontSize:12},
 sumBar:    {background:BRAND.cardBg,borderRadius:6,padding:"11px 20px",display:"flex",gap:28,fontSize:13,border:`1px solid ${BRAND.border}`,marginTop:4},
 overlay:   {position:"fixed",inset:0,background:"rgba(0,10,30,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100},
-modal:     {background:BRAND.cardBg,border:`1px solid ${BRAND.border}`,borderRadius:8,padding:"28px",maxWidth:360,width:"90%"},
+modal:     {background:BRAND.cardBg,border:`1px solid ${BRAND.border}`,borderRadius:8,padding:"28px",maxWidth:380,width:"90%"},
+resetPassInput:{display:"block",width:"100%",boxSizing:"border-box",background:BRAND.darkBg,border:`1px solid ${BRAND.border}`,color:BRAND.offWhite,padding:"10px 13px",borderRadius:4,fontSize:16,outline:"none"},
 toast:     {position:"fixed",bottom:28,left:"50%",transform:"translateX(-50%)",color:BRAND.white,padding:"10px 26px",borderRadius:6,fontSize:14,fontWeight:"bold",zIndex:200},
 badge:{
   ontime:   {background:"rgba(0,180,80,0.15)",color:"#50d890",padding:"2px 9px",borderRadius:4,fontSize:11,fontFamily:"monospace",border:"1px solid rgba(0,180,80,0.3)"},
