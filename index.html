@@ -296,6 +296,14 @@ function App() {
   const filtered  = filterDate==="all"?people:people.filter(p=>p.date===filterDate);
   const runs      = buildRuns(filtered);
 
+  useEffect(()=>{
+    const ppl = tab==="arrivals"?arrivals:departures;
+    const dates = [...new Set(ppl.map((p)=>p.date))];
+    setFilter((fd)=> (fd!=="all" && !dates.includes(fd) ? "all" : fd));
+  }, [tab, arrivals, departures]);
+
+  const dayAccent = tab==="arrivals" ? BRAND.yellow : BRAND.red;
+
   function showToast(msg,type="success"){setToast({msg,type});setTimeout(()=>setToast(null),3000);}
   function resetForm(){setForm({name:"",mobile:"",date:"",time:"",flight:"",note:""});setEditId(null);}
 
@@ -393,7 +401,7 @@ function App() {
           <div style={S.logoArea}>
             <div style={S.logoCircle}>
               <div style={S.logoInner}>
-                <div style={{fontSize:22}}>🏄</div>
+                <div style={{fontSize:26,lineHeight:1}} title="Powercraft duck">🦆</div>
               </div>
             </div>
             <div>
@@ -451,18 +459,33 @@ function App() {
               </button>
             </>
           )}
-          {allDates.length>1&&(
-            <select style={S.sel} value={filterDate} onChange={e=>setFilter(e.target.value)}>
-              <option value="all">All dates ({people.length})</option>
-              {allDates.map(d=><option key={d} value={d}>{fmtDate(d)} ({people.filter(p=>p.date===d).length})</option>)}
-            </select>
-          )}
           <button style={{...S.addBtn, background: tab==="arrivals"?BRAND.yellow:BRAND.red, color: tab==="arrivals"?BRAND.blue:BRAND.white}}
             onClick={()=>{resetForm();setView("add");}}>
             + Add Person
           </button>
         </div>
       </div>
+
+      {(view==="runs"||view==="list")&&allDates.length>0&&(
+        <div style={S.dayTabsWrap}>
+          <div style={S.dayTabsInner}>
+            <button type="button" style={{
+              ...S.dayTab,
+              ...(filterDate==="all"?{...S.dayTabOn,borderColor:dayAccent,color:dayAccent}:{})
+            }} onClick={()=>setFilter("all")}>
+              All days ({people.length})
+            </button>
+            {allDates.map(d=>(
+              <button key={d} type="button" style={{
+                ...S.dayTab,
+                ...(filterDate===d?{...S.dayTabOn,borderColor:dayAccent,color:dayAccent}:{})
+              }} onClick={()=>setFilter(d)}>
+                {fmtDate(d)} ({people.filter(p=>p.date===d).length})
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <main style={S.main}>
 
@@ -690,11 +713,14 @@ modeTabs:  {maxWidth:960,margin:"0 auto",padding:"0 24px",display:"flex",backgro
 modeTab:   {flex:1,padding:"13px 0",background:"transparent",border:"none",color:BRAND.textDim,cursor:"pointer",fontSize:15,fontWeight:"bold",borderBottom:"3px solid transparent"},
 modeOn:    {background:"transparent"},
 subNav:    {maxWidth:960,margin:"0 auto",padding:"12px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10,background:BRAND.cardBg,borderBottom:`1px solid ${BRAND.border}`},
+dayTabsWrap:{maxWidth:960,margin:"0 auto",padding:"0 16px",background:BRAND.cardBg,borderBottom:`1px solid ${BRAND.border}`,overflowX:"auto",WebkitOverflowScrolling:"touch"},
+dayTabsInner:{display:"flex",gap:6,flexWrap:"nowrap",padding:"10px 8px 12px",minHeight:48,alignItems:"center"},
+dayTab:    {background:"transparent",border:`1px solid ${BRAND.border}`,color:BRAND.textMuted,padding:"8px 14px",borderRadius:4,cursor:"pointer",fontSize:13,fontWeight:"bold",flexShrink:0,whiteSpace:"nowrap"},
+dayTabOn:  {background:BRAND.cardBg2,color:BRAND.offWhite},
 subL:      {display:"flex",gap:6},
 subR:      {display:"flex",gap:8,alignItems:"center"},
 subBtn:    {background:"transparent",border:`1px solid ${BRAND.border}`,color:BRAND.textMuted,padding:"7px 14px",borderRadius:4,cursor:"pointer",fontSize:13},
 subOn:     {background:BRAND.cardBg2,color:BRAND.offWhite,borderColor:BRAND.blueLight},
-sel:       {background:BRAND.cardBg,border:`1px solid ${BRAND.border}`,color:BRAND.offWhite,padding:"7px 12px",borderRadius:4,fontSize:13,cursor:"pointer"},
 addBtn:    {border:"none",padding:"8px 18px",borderRadius:4,cursor:"pointer",fontWeight:"bold",fontSize:13},
 main:      {maxWidth:960,margin:"0 auto",padding:"16px 24px"},
 card:      {background:BRAND.cardBg,borderRadius:8,padding:0,marginBottom:16,border:`1px solid ${BRAND.border}`,overflow:"hidden"},
