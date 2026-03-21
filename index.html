@@ -220,19 +220,31 @@ function App() {
   const filtered  = filterDate==="all"?people:people.filter(p=>p.date===filterDate);
   const runs      = buildRuns(filtered);
 
+  const allDatesDriver = [...new Set([...arrivals.map((p)=>p.date), ...departures.map((p)=>p.date)])].sort();
+  const filArr       = filterDate==="all" ? arrivals : arrivals.filter((p)=>p.date===filterDate);
+  const filDep       = filterDate==="all" ? departures : departures.filter((p)=>p.date===filterDate);
+  const runsArr      = buildRuns(filArr);
+  const runsDep      = buildRuns(filDep);
+
   useEffect(()=>{
-    const ppl = tab==="arrivals"?arrivals:departures;
-    const dates = [...new Set(ppl.map((p)=>p.date))];
+    let dates;
+    if (view==="driver") {
+      dates = [...new Set([...arrivals.map((p)=>p.date), ...departures.map((p)=>p.date)])];
+    } else {
+      const ppl = tab==="arrivals"?arrivals:departures;
+      dates = [...new Set(ppl.map((p)=>p.date))];
+    }
     setFilter((fd)=> (fd!=="all" && !dates.includes(fd) ? "all" : fd));
-  }, [tab, arrivals, departures]);
+  }, [tab, arrivals, departures, view]);
 
-  const dayAccent = tab==="arrivals" ? BRAND.yellow : BRAND.red;
+  const dayAccent = view==="driver" ? BRAND.blueLight : (tab==="arrivals" ? BRAND.yellow : BRAND.red);
 
-  function toggleDriverRun(ri) {
+  function toggleDriverRun(prefix, ri) {
+    const key = `${prefix}${ri}`;
     setDriverOpen((prev) => {
       const next = new Set(prev);
-      if (next.has(ri)) next.delete(ri);
-      else next.add(ri);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
@@ -406,29 +418,33 @@ function App() {
             }}
             onClick={beginAddPerson}
           >
-            <span style={S.addBtnHeroMain}>+ Add someone to this list</span>
+            <span style={S.addBtnHeroMain}>+ Add someone</span>
             <span style={{...S.addBtnHeroSub,color: tab==="arrivals" ? "rgba(0,48,135,0.85)" : "rgba(255,255,255,0.92)"}}>
-              Tap here for name, mobile, flight and time (add a passenger)
+              {view==="driver"
+                ? "Pick Arrivals (yellow) or Departures (red) tab above, then tap here — name, date, time & flight."
+                : "Name, date & time required. Add flight code (e.g. JQ404) when you know it."}
             </span>
           </button>
         </div>
       )}
 
-      {(view==="runs"||view==="list"||view==="driver")&&allDates.length>0&&(
+      {(view==="runs"||view==="list"||view==="driver")&&(view==="driver"?allDatesDriver.length>0:allDates.length>0)&&(
         <div style={S.dayTabsWrap}>
           <div style={S.dayTabsInner}>
             <button type="button" style={{
               ...S.dayTab,
               ...(filterDate==="all"?{...S.dayTabOn,borderColor:dayAccent,color:dayAccent}:{})
             }} onClick={()=>setFilter("all")}>
-              All days ({people.length})
+              All days ({view==="driver"?arrivals.length+departures.length:people.length})
             </button>
-            {allDates.map(d=>(
+            {(view==="driver"?allDatesDriver:allDates).map((d)=>(
               <button key={d} type="button" style={{
                 ...S.dayTab,
                 ...(filterDate===d?{...S.dayTabOn,borderColor:dayAccent,color:dayAccent}:{})
               }} onClick={()=>setFilter(d)}>
-                {fmtDate(d)} ({people.filter(p=>p.date===d).length})
+                {fmtDate(d)} ({view==="driver"
+                  ? arrivals.filter((p)=>p.date===d).length+departures.filter((p)=>p.date===d).length
+                  : people.filter((p)=>p.date===d).length})
               </button>
             ))}
           </div>
@@ -441,21 +457,26 @@ function App() {
           <div style={S.card}>
             <div style={{...S.cardAccent, background: tab==="arrivals"?BRAND.yellow:BRAND.red}}/>
             <h2 style={{...S.cardTitle, color: tab==="arrivals"?BRAND.yellow:BRAND.red}}>
-              {editId?"Edit Person":`Add ${tab==="arrivals"?"Arrival":"Departure"}`}
+              {editId?"Update person":(tab==="arrivals"?"Add arrival (flight in)":"Add departure (to airport)")}
             </h2>
-            <div style={S.fGrid}>
+            <p style={S.formIntro}>
+              {tab==="arrivals"
+                ? "Tell us who is landing and when. Flight number helps the bus meet the right plane."
+                : "Who is leaving the compound and when — we’ll line up the airport run."}
+            </p>
+            <div style={S.fGridSimple}>
               {[
-                {label:"Full Name *",   key:"name",   type:"text", ph:"e.g. Jane Smith"},
-                {label:"Mobile Number", key:"mobile", type:"text", ph:"04XX XXX XXX"},
+                {label:"Name *",        key:"name",   type:"text", ph:"Full name"},
+                {label:"Mobile",        key:"mobile", type:"text", ph:"04xx xxx xxx (optional)"},
                 {label:"Date *",        key:"date",   type:"date", ph:""},
-                {label: tab==="arrivals"?"Landing Time *":"Departure Time *", key:"time", type:"time", ph:""},
-                {label:"Flight Number", key:"flight", type:"text", ph:"e.g. JQ404"},
-                {label:"Note",          key:"note",   type:"text", ph:"e.g. Special drop-off"},
+                {label: tab==="arrivals"?"Plane lands *":"Pickup time *", key:"time", type:"time", ph:""},
+                {label:"Flight / train",key:"flight", type:"text", ph:"JQ404, VA527, or TRAIN"},
+                {label:"Note",          key:"note",   type:"text", ph:"Optional — bags, kids, etc."},
               ].map(f=>(
                 <label key={f.key} style={S.lbl}>
                   <span style={S.lblTxt}>{f.label}</span>
                   <input
-                    style={S.inp}
+                    style={{...S.inp,fontSize:16}}
                     type={f.type}
                     placeholder={f.ph}
                     value={form[f.key]}
@@ -634,90 +655,141 @@ function App() {
         {view==="driver"&&(
           <div>
             <div style={S.dvBanner}>
-              <div style={S.dvBannerTitle}>Bus driver view</div>
-              <div style={S.dvBannerTxt}>Large type for the road. Tap a run to open or close passenger names, mobiles and flights.</div>
+              <div style={S.dvBannerTitle}>Bus driver · full day</div>
+              <div style={S.dvBannerTxt}>
+                Arrivals (yellow) and departures (red) together — one bus, both jobs. Tap a run for names, numbers and flights.
+              </div>
             </div>
-            {runs.length===0&&(
+            {runsArr.length===0&&runsDep.length===0&&(
               <div style={S.emptyState}>
                 <div style={S.emptyIcon}>🚌</div>
-                <div style={S.emptyTitle}>Nothing scheduled yet</div>
-                <div style={S.emptyBody}>Add people with the big button above; runs and contacts will show here for drivers.</div>
-                <button type="button" style={{...S.btnP, background: tab==="arrivals"?BRAND.yellow:BRAND.red, color: tab==="arrivals"?BRAND.blue:BRAND.white}}
-                  onClick={beginAddPerson}>+ Add first person</button>
+                <div style={S.emptyTitle}>Nothing on the board yet</div>
+                <div style={S.emptyBody}>Choose Arrivals or Departures, use “Add someone”, then open this view again.</div>
+                <button type="button" style={{...S.btnP, background: BRAND.blueLight, color: BRAND.white}}
+                  onClick={()=>setTab("arrivals")}>Go to Arrivals</button>
               </div>
             )}
-            {runs.map((run,ri)=>{
-              const latestTime = run.reduce((mx,p)=>p.time>mx?p.time:mx,"00:00");
-              const depart     = addMinutes(latestTime,BUFFER_MIN);
-              const arrive     = addMinutes(depart,TRAVEL_MIN);
-              const color      = RUN_COLORS[ri%RUN_COLORS.length];
-              const isToday    = run[0].date===todayStr();
-              const expanded   = driverOpen.has(ri);
-              const summary    = tab==="arrivals"
-                ? `${fmtDate(run[0].date)} · Bus leaves airport ${fmtTime(depart)} · ${run.length} people`
-                : `${fmtDate(run[0].date)} · Compound pickup ${fmtTime(latestTime)} · ${run.length} people`;
 
-              return (
-                <div key={ri} style={{...S.dvRun,borderColor:color}}>
-                  <button type="button" style={S.dvRunHead} onClick={()=>toggleDriverRun(ri)}>
-                    <span style={{...S.dvRunChev,color}}>{expanded?"▼":"▶"}</span>
-                    <div style={{flex:1,textAlign:"left"}}>
-                      <div style={S.dvRunHeadTitle}>
-                        Run {ri+1}
-                        {isToday&&<span style={S.dvToday}>TODAY</span>}
-                      </div>
-                      <div style={S.dvRunHeadSub}>{summary}</div>
-                    </div>
-                    <div style={{...S.dvRunHeadTimes,color: tab==="arrivals"?color:BRAND.red}}>
-                      {tab==="arrivals" ? <>Compound<br/>{fmtTime(arrive)}</> : <>Airport<br/>{fmtTime(arrive)}</>}
-                    </div>
-                  </button>
-                  {expanded&&(
-                    <div style={S.dvBody}>
-                      <div style={S.dvTimeRow}>
-                        {tab==="arrivals"?(
-                          <>
+            {runsArr.length>0&&(
+              <>
+                <div style={{...S.dvSectionHead,background:"rgba(245,168,0,0.15)",borderColor:BRAND.yellow,color:BRAND.yellow}}>
+                  Arrivals — pick up from airport ({runsArr.length} run{runsArr.length!==1?"s":""})
+                </div>
+                {runsArr.map((run,ri)=>{
+                  const latestTime = run.reduce((mx,p)=>p.time>mx?p.time:mx,"00:00");
+                  const depart     = addMinutes(latestTime,BUFFER_MIN);
+                  const arrive     = addMinutes(depart,TRAVEL_MIN);
+                  const color      = RUN_COLORS[ri%RUN_COLORS.length];
+                  const isToday    = run[0].date===todayStr();
+                  const expanded   = driverOpen.has(`a${ri}`);
+                  const summary    = `${fmtDate(run[0].date)} · Bus leaves airport ${fmtTime(depart)} · ${run.length} people`;
+                  return (
+                    <div key={`a-${ri}`} style={{...S.dvRun,borderColor:color}}>
+                      <button type="button" style={S.dvRunHead} onClick={()=>toggleDriverRun("a", ri)}>
+                        <span style={{...S.dvRunChev,color}}>{expanded?"▼":"▶"}</span>
+                        <div style={{flex:1,textAlign:"left"}}>
+                          <div style={S.dvRunHeadTitle}>
+                            Arr Run {ri+1}
+                            {isToday&&<span style={S.dvToday}>TODAY</span>}
+                          </div>
+                          <div style={S.dvRunHeadSub}>{summary}</div>
+                        </div>
+                        <div style={{...S.dvRunHeadTimes,color}}>
+                          Compound<br/>{fmtTime(arrive)}
+                        </div>
+                      </button>
+                      {expanded&&(
+                        <div style={S.dvBody}>
+                          <div style={S.dvTimeRow}>
                             <span><b>Latest landing</b> {fmtTime(latestTime)}</span>
                             <span style={{color}}><b>Leave airport</b> {fmtTime(depart)}</span>
                             <span><b>Compound</b> {fmtTime(arrive)}</span>
-                          </>
-                        ):(
-                          <>
+                          </div>
+                          {run.map((p)=>{
+                            const th = telHref(p.mobile);
+                            return (
+                              <div key={p.id} style={{...S.dvPax,borderLeftColor:color}}>
+                                <div style={S.dvPaxName}>{p.name}</div>
+                                {th ? <a href={th} style={S.dvPaxTel}>{p.mobile}</a> : <div style={S.dvPaxMuted}>{p.mobile&&p.mobile!=="TBC"?p.mobile:"No mobile on file"}</div>}
+                                {(p.flight||p.note)&&(
+                                  <div style={S.dvPaxMeta}>
+                                    {p.flight&&<span>{p.flight}</span>}
+                                    {p.flight&&p.note&&" · "}
+                                    {p.note&&<span>{p.note}</span>}
+                                  </div>
+                                )}
+                                {p.flight&&p.flight!=="TRAIN"&&(
+                                  <div style={{marginTop:8}}>
+                                    <StatusBadge status={p.status} loading={loadingF[p.id]}/>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+
+            {runsDep.length>0&&(
+              <>
+                <div style={{...S.dvSectionHead,background:"rgba(208,2,27,0.12)",borderColor:BRAND.red,color:BRAND.redLight,marginTop:runsArr.length?18:0}}>
+                  Departures — to the airport ({runsDep.length} run{runsDep.length!==1?"s":""})
+                </div>
+                {runsDep.map((run,ri)=>{
+                  const latestTime = run.reduce((mx,p)=>p.time>mx?p.time:mx,"00:00");
+                  const arrive     = addMinutes(addMinutes(latestTime,BUFFER_MIN),TRAVEL_MIN);
+                  const color      = RUN_COLORS[(ri+3)%RUN_COLORS.length];
+                  const isToday    = run[0].date===todayStr();
+                  const expanded   = driverOpen.has(`d${ri}`);
+                  const summary    = `${fmtDate(run[0].date)} · Compound pickup ${fmtTime(latestTime)} · ${run.length} people`;
+                  return (
+                    <div key={`d-${ri}`} style={{...S.dvRun,borderColor:color}}>
+                      <button type="button" style={S.dvRunHead} onClick={()=>toggleDriverRun("d", ri)}>
+                        <span style={{...S.dvRunChev,color:BRAND.red}}>{expanded?"▼":"▶"}</span>
+                        <div style={{flex:1,textAlign:"left"}}>
+                          <div style={S.dvRunHeadTitle}>
+                            Dep Run {ri+1}
+                            {isToday&&<span style={S.dvToday}>TODAY</span>}
+                          </div>
+                          <div style={S.dvRunHeadSub}>{summary}</div>
+                        </div>
+                        <div style={{...S.dvRunHeadTimes,color:BRAND.red}}>
+                          Airport<br/>{fmtTime(arrive)}
+                        </div>
+                      </button>
+                      {expanded&&(
+                        <div style={S.dvBody}>
+                          <div style={S.dvTimeRow}>
                             <span style={{color:BRAND.red}}><b>Compound pickup</b> {fmtTime(latestTime)}</span>
                             <span><b>Arrive airport</b> {fmtTime(arrive)}</span>
-                          </>
-                        )}
-                      </div>
-                      {run.map((p)=>{
-                        const th = telHref(p.mobile);
-                        return (
-                          <div key={p.id} style={{...S.dvPax,borderLeftColor:color}}>
-                            <div style={S.dvPaxName}>{p.name}</div>
-                            {th ? (
-                              <a href={th} style={S.dvPaxTel}>{p.mobile}</a>
-                            ) : (
-                              <div style={S.dvPaxMuted}>{p.mobile&&p.mobile!=="TBC"?p.mobile:"No mobile on file"}</div>
-                            )}
-                            {(p.flight||p.note)&&(
-                              <div style={S.dvPaxMeta}>
-                                {p.flight&&<span>{p.flight}</span>}
-                                {p.flight&&p.note&&" · "}
-                                {p.note&&<span>{p.note}</span>}
-                              </div>
-                            )}
-                            {tab==="arrivals"&&p.flight&&p.flight!=="TRAIN"&&(
-                              <div style={{marginTop:8}}>
-                                <StatusBadge status={p.status} loading={loadingF[p.id]}/>
-                              </div>
-                            )}
                           </div>
-                        );
-                      })}
+                          {run.map((p)=>{
+                            const th = telHref(p.mobile);
+                            return (
+                              <div key={p.id} style={{...S.dvPax,borderLeftColor:color}}>
+                                <div style={S.dvPaxName}>{p.name}</div>
+                                {th ? <a href={th} style={S.dvPaxTel}>{p.mobile}</a> : <div style={S.dvPaxMuted}>{p.mobile&&p.mobile!=="TBC"?p.mobile:"No mobile on file"}</div>}
+                                {(p.flight||p.note)&&(
+                                  <div style={S.dvPaxMeta}>
+                                    {p.flight&&<span>{p.flight}</span>}
+                                    {p.flight&&p.note&&" · "}
+                                    {p.note&&<span>{p.note}</span>}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </>
+            )}
           </div>
         )}
       </main>
@@ -811,6 +883,7 @@ addBtnHeroSub:{fontSize:12,maxWidth:560,lineHeight:1.45,textAlign:"center",fontW
 dvBanner:{background:BRAND.cardBg,border:`1px solid ${BRAND.border}`,borderRadius:8,padding:"14px 18px",marginBottom:14},
 dvBannerTitle:{fontSize:17,fontWeight:"bold",color:BRAND.yellow,marginBottom:6},
 dvBannerTxt:{fontSize:13,color:BRAND.textMuted,lineHeight:1.5},
+dvSectionHead:{fontSize:12,fontWeight:"bold",letterSpacing:0.6,textTransform:"uppercase",padding:"10px 14px",borderRadius:6,border:"1px solid",marginBottom:10,lineHeight:1.35},
 dvRun:{border:"2px solid",borderRadius:10,marginBottom:14,background:BRAND.cardBg,overflow:"hidden"},
 dvRunHead:{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"16px 18px",background:BRAND.cardBg2,cursor:"pointer",color:BRAND.offWhite,border:"none",fontFamily:"inherit",WebkitTapHighlightColor:"transparent"},
 dvRunChev:{fontSize:14,width:22,flexShrink:0,fontWeight:"bold"},
@@ -829,7 +902,9 @@ main:      {maxWidth:960,margin:"0 auto",padding:"16px 24px"},
 card:      {background:BRAND.cardBg,borderRadius:8,padding:0,marginBottom:16,border:`1px solid ${BRAND.border}`,overflow:"hidden"},
 cardAccent:{height:4},
 cardTitle: {margin:"0 0 20px",fontSize:18,fontWeight:"bold",padding:"20px 24px 0"},
+formIntro: {margin:"0 0 14px",fontSize:14,color:BRAND.textMuted,lineHeight:1.55,maxWidth:520},
 fGrid:     {display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,padding:"0 24px",marginBottom:22},
+fGridSimple:{display:"grid",gridTemplateColumns:"1fr",gap:16,padding:"0 24px",marginBottom:22,maxWidth:520,marginLeft:"auto",marginRight:"auto"},
 lbl:       {display:"flex",flexDirection:"column",gap:7},
 lblTxt:    {fontSize:11,color:BRAND.textMuted,letterSpacing:1,textTransform:"uppercase",fontWeight:"bold"},
 inp:       {background:BRAND.darkBg,border:`1px solid ${BRAND.border}`,color:BRAND.offWhite,padding:"10px 13px",borderRadius:4,fontSize:14,outline:"none"},
