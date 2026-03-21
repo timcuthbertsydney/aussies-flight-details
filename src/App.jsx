@@ -6,7 +6,7 @@ const TRAVEL_MIN = 13;
 const BUFFER_MIN = 20;
 const STORAGE_KEY_ARR = “gc_arrivals_v3”;
 const STORAGE_KEY_DEP = “gc_departures_v3”;
-const API_KEY = import.meta.env.VITE_API_KEY;
+const API_KEY = “3940102fc192ef97cb2eb7a62f1a11dd”;
 
 // ─── SLSA / Aussies 2026 Brand Palette ───────────────────────────────────────
 const BRAND = {
