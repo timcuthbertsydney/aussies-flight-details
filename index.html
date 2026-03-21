@@ -154,7 +154,8 @@ function buildRuns(people) {
   const runs=[]; let cur=[],base=null;
   for (const p of sorted) {
     const m=toMinutes(p.time);
-    if (base===null||m-base>WINDOW_MIN||cur.length>=MAX_PAX){if(cur.length)runs.push(cur);cur=[p];base=m;}
+    const dayChanged = cur.length > 0 && p.date !== cur[cur.length - 1].date;
+    if (base===null||dayChanged||m-base>WINDOW_MIN||cur.length>=MAX_PAX){if(cur.length)runs.push(cur);cur=[p];base=m;}
     else cur.push(p);
   }
   if(cur.length)runs.push(cur);
@@ -266,6 +267,7 @@ function App() {
     if (!form.name.trim()||!form.date||!form.time){showToast("Name, date and time are required","error");return;}
     if (editId){setPeople(prev=>prev.map(p=>p.id===editId?{...p,...form}:p));showToast("Updated");}
     else{setPeople(prev=>[...prev,{id:uid(),...form,status:null}]);showToast("Added to schedule");}
+    if (filterDate!=="all"&&form.date!==filterDate){setFilter("all");}
     resetForm();setView("runs");
   }
 
