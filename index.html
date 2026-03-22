@@ -294,7 +294,13 @@ function App() {
   const [view,setView]            = useState("runs");
   const [form,setForm]            = useState({name:"",mobile:"",date:"",time:"",flight:"",note:""});
   const [editId,setEditId]        = useState(null);
-  const [filterDate,setFilter]    = useState(todayStr);
+  const [filterDate,setFilter]    = useState(() => {
+    const today = todayStr();
+    const initial = loadStoredArrivals();
+    if (initial.some((p) => p.date === today)) return today;
+    const future = [...new Set(initial.map((p) => p.date))].filter((d) => d > today).sort();
+    return future.length > 0 ? future[0] : "all";
+  });
   const [loadingF,setLoadingF]    = useState({});
   const [toast,setToast]          = useState(null);
   const [delConfirm,setDelConfirm]= useState(null);
@@ -345,7 +351,13 @@ function App() {
       const ppl = tab==="arrivals"?arrivals:departures;
       dates = [...new Set(ppl.map((p)=>p.date))];
     }
-    setFilter((fd)=> (fd!=="all" && !dates.includes(fd) ? "all" : fd));
+    setFilter((fd) => {
+      if (fd === "all" || dates.includes(fd)) return fd;
+      const today = todayStr();
+      if (dates.includes(today)) return today;
+      const future = dates.filter((d) => d > today).sort();
+      return future.length > 0 ? future[0] : "all";
+    });
   }, [tab, arrivals, departures, view]);
 
   runFlightRefreshRoundRef.current = async function runFlightRefreshRound() {
