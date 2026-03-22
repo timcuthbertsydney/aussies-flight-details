@@ -242,8 +242,8 @@ async function fetchFlightStatusText(person) {
   if (isLandedStatus(person.status)) return person.status;
   const iata = person.flight.replace(/\s/g, "").toUpperCase();
   const resp = await fetch(
-    `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(iata)}/${person.date}`,
-    { headers: { "X-RapidAPI-Key": RAPIDAPI_KEY, "X-RapidAPI-Host": "aerodatabox.p.rapidapi.com" } }
+    `https://aerodatabox-cheaper-version.p.rapidapi.com/flights/number/${encodeURIComponent(iata)}/${person.date}`,
+    { headers: { "X-RapidAPI-Key": RAPIDAPI_KEY, "X-RapidAPI-Host": "aerodatabox-cheaper-version.p.rapidapi.com" } }
   );
   if (!resp.ok) {
     if (resp.status === 404) return "No data found";
