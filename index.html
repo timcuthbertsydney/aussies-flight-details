@@ -35,7 +35,7 @@ const BUFFER_MIN = 20;
 const STORAGE_KEY_ARR = "gc_arrivals_v4";
 const STORAGE_KEY_DEP = "gc_departures_v4";
 const RESET_PASSCODE = "2095";
-const API_KEY = "ca8680b614b558f10d8e78f4f05467b5";
+const RAPIDAPI_KEY = "YOUR_RAPIDAPI_KEY_HERE";
 
 const BRAND = {
 red:        "#D0021B",
@@ -207,70 +207,54 @@ function flightGroupKey(person) {
   return `${String(person.flight).replace(/\s/g, "").toUpperCase()}_${person.date}`;
 }
 
-function fmtApiArrivalTime(iso) {
-  if (!iso || typeof iso !== "string") return "";
-  try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    return d.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "";
-  }
+function fmtAeroTime(localStr) {
+  if (!localStr) return "";
+  const m = String(localStr).match(/[T ](\d{2}:\d{2})/);
+  return m ? m[1] : "";
 }
 
-function flightRecordToStatusText(f) {
-  const fs = f.flight_status;
+function aeroDataBoxToStatusText(f) {
+  const status = f.status || "Unknown";
   const arr = f.arrival || {};
-  const estArr = fmtApiArrivalTime(arr.estimated) || fmtApiArrivalTime(arr.scheduled);
-  const actArr = fmtApiArrivalTime(arr.actual);
-  if (fs === "landed") {
-    if (actArr) return `Landed · actual ${actArr}`;
-    if (estArr) return `Landed · est ${estArr}`;
+  const actual  = fmtAeroTime(arr.actualTime?.local  || arr.actualTime?.utc);
+  const revised = fmtAeroTime(arr.revisedTime?.local || arr.revisedTime?.utc);
+  const sched   = fmtAeroTime(arr.scheduledTime?.local || arr.scheduledTime?.utc);
+  const best = actual || revised || sched;
+  if (status === "Landed") {
+    if (actual)  return `Landed · actual ${actual}`;
+    if (best)    return `Landed · est ${best}`;
     return "Landed";
   }
-  if (fs === "cancelled") return "Cancelled";
-  if (fs === "active") {
-    return estArr ? `In flight · est arrival ${estArr}` : "In flight";
+  if (status === "Cancelled") return "Cancelled";
+  if (status === "Diverted")  return "Diverted";
+  if (status === "EnRoute") {
+    return best ? `In flight · est arrival ${best}` : "In flight";
   }
-  if (fs === "scheduled") {
+  if (status === "Scheduled") {
     const delay = arr.delay;
     const label = delay ? `Delayed ~${delay} min` : "On time";
-    return estArr ? `${label} · est arrival ${estArr}` : label;
+    return best ? `${label} · est arrival ${best}` : label;
   }
-  return estArr ? `${String(fs || "Status").trim()} · est arrival ${estArr}` : (fs || "Unknown");
+  return best ? `${status} · est arrival ${best}` : status;
 }
 
 async function fetchFlightStatusText(person) {
   if (isLandedStatus(person.status)) return person.status;
   const iata = person.flight.replace(/\s/g, "").toUpperCase();
-  // Free-tier keys reject `flight_date` on this endpoint; omit it and pick the row for our date in-app.
-  const data = await fetch(
-    `https://api.aviationstack.com/v1/flights?access_key=${API_KEY}&flight_iata=${encodeURIComponent(iata)}&limit=100`
-  ).then((r) => r.json());
-  if (data?.error) {
-    const code = data.error.code || "";
-    const msg = (data.error.info || data.error.message || "API error").trim();
-    if (code === "function_access_restricted" || /subscription|plan|not support/i.test(msg)) {
-      return "Flight lookup blocked (API plan)";
-    }
-    if (code === "invalid_access_key" || code === "missing_access_key") {
-      return "Flight lookup: bad API key";
-    }
-    return msg.length > 72 ? `${msg.slice(0, 69)}…` : msg;
+  const resp = await fetch(
+    `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(iata)}/${person.date}`,
+    { headers: { "X-RapidAPI-Key": RAPIDAPI_KEY, "X-RapidAPI-Host": "aerodatabox.p.rapidapi.com" } }
+  );
+  if (!resp.ok) {
+    if (resp.status === 404) return "No data found";
+    if (resp.status === 401 || resp.status === 403) return "Flight lookup: bad API key";
+    if (resp.status === 429) return "Flight lookup: rate limit hit";
+    return `Flight lookup error (${resp.status})`;
   }
-  const list = Array.isArray(data?.data) ? data.data : [];
-  let f = list.find((x) => x.flight_date === person.date);
-  if (!f) {
-    f = list.find((x) => {
-      const sch = x.arrival?.scheduled;
-      return typeof sch === "string" && sch.slice(0, 10) === person.date;
-    });
-  }
-  if (!f) {
-    if (!list.length) return "No data found";
-    return "No data for that day";
-  }
-  return flightRecordToStatusText(f);
+  const data = await resp.json();
+  const list = Array.isArray(data) ? data : (Array.isArray(data?.flights) ? data.flights : []);
+  if (!list.length) return "No data found";
+  return aeroDataBoxToStatusText(list[0]);
 }
 
 function StatusBadge({status,loading}) {
