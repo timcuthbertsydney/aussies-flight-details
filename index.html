@@ -310,7 +310,7 @@ function App() {
   const [view,setView]            = useState("runs");
   const [form,setForm]            = useState({name:"",mobile:"",date:"",time:"",flight:"",note:""});
   const [editId,setEditId]        = useState(null);
-  const [filterDate,setFilter]    = useState("all");
+  const [filterDate,setFilter]    = useState(todayStr);
   const [loadingF,setLoadingF]    = useState({});
   const [toast,setToast]          = useState(null);
   const [delConfirm,setDelConfirm]= useState(null);
