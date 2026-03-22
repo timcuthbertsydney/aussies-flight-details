@@ -28,7 +28,7 @@
 
 const MAX_PAX = 12;
 const FLIGHT_POLL_MS = 150000;
-const FLIGHT_STAGGER_MS = 400;
+const FLIGHT_STAGGER_MS = 2000;
 const WINDOW_MIN = 30;
 const TRAVEL_MIN = 13;
 const BUFFER_MIN = 20;
@@ -195,7 +195,7 @@ function isHistoricalArrival(person) {
 function isTerminalFlightStatus(status, person) {
   if (!status) return false;
   if (isLandedStatus(status)) return true;
-  if (/^Flight lookup/i.test(String(status))) return true;
+  if (/^Flight lookup/i.test(String(status))) return !/rate limit/i.test(String(status));
   const sl = String(status).toLowerCase();
   if (sl.includes("cancel")) return true;
   if (status === "No data found" || status === "No data for that day") return isHistoricalArrival(person);
@@ -378,7 +378,8 @@ function App() {
       });
       if (skipRefresh) continue;
       const anyUpcoming = group.some((p) => !isHistoricalArrival(p));
-      const minGap = anyUpcoming ? FLIGHT_POLL_MS : 90000;
+      const rateLimited = group.some((p) => /rate limit/i.test(String(p.status || "")));
+      const minGap = rateLimited ? 300000 : anyUpcoming ? FLIGHT_POLL_MS : 90000;
       if (now - (lastFlightFetchRef.current[key] || 0) < minGap) continue;
 
       flightFetchInflightRef.current.add(key);
