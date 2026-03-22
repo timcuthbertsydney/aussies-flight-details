@@ -288,7 +288,7 @@ function resolveAsset(relativePath) {
 }
 
 function App() {
-  const [tab,setTab]              = useState("arrivals");
+  const [tab,setTab]              = useState("departures");
   const [arrivals,setArrivals]    = useState(()=>loadStoredArrivals());
   const [departures,setDepartures]= useState(()=>loadStoredDepartures());
   const [view,setView]            = useState("runs");
@@ -296,7 +296,7 @@ function App() {
   const [editId,setEditId]        = useState(null);
   const [filterDate,setFilter]    = useState(() => {
     const today = todayStr();
-    const initial = loadStoredArrivals();
+    const initial = loadStoredDepartures();
     if (initial.some((p) => p.date === today)) return today;
     const future = [...new Set(initial.map((p) => p.date))].filter((d) => d > today).sort();
     return future.length > 0 ? future[0] : "all";
