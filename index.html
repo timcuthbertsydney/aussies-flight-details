@@ -540,11 +540,12 @@ function App() {
       showToast("Incorrect passcode", "error");
       return;
     }
-    const defaultArrivals = materializeDefaultArrivals();
-    setArrivals(defaultArrivals);
+    setArrivals([]);
     setDepartures([]);
-    db.collection("data").doc("arrivals").set({items:defaultArrivals}).catch(()=>{});
+    db.collection("data").doc("arrivals").set({items:[]}).catch(()=>{});
     db.collection("data").doc("departures").set({items:[]}).catch(()=>{});
+    try{localStorage.removeItem(STORAGE_KEY_ARR);}catch{}
+    try{localStorage.removeItem(STORAGE_KEY_DEP);}catch{}
     setLoadingF({});
     lastFlightFetchRef.current = {};
     flightFetchInflightRef.current.clear();
@@ -553,7 +554,7 @@ function App() {
     setView("runs");
     setDelConfirm(null);
     closeResetModal();
-    showToast("All data cleared. Default arrivals restored.");
+    showToast("All data erased.");
   }
 
   return (
