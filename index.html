@@ -10,6 +10,8 @@
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #001A4D; }
@@ -25,6 +27,16 @@
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useEffect, useRef, useMemo } = React;
+
+firebase.initializeApp({
+  apiKey: "AIzaSyCoGfJPvcQ2MqjS-s1lmHE35BmC4C443xI",
+  authDomain: "aussies-flight-details.firebaseapp.com",
+  projectId: "aussies-flight-details",
+  storageBucket: "aussies-flight-details.firebasestorage.app",
+  messagingSenderId: "207842048275",
+  appId: "1:207842048275:web:ec13b7792ad9e6987002e6",
+});
+const db = firebase.firestore();
 
 const MAX_PAX = 12;
 const FLIGHT_POLL_MS = 150000;
@@ -313,6 +325,8 @@ function App() {
   const lastFlightFetchRef = useRef({});
   const flightFetchInflightRef = useRef(new Set());
   const runFlightRefreshRoundRef = useRef(null);
+  const fsArrUpdatingRef = useRef(false);
+  const fsDepUpdatingRef = useRef(false);
 
   const arrivalsScheduleKey = useMemo(
     () => arrivals.map((p) => `${p.id}\t${p.flight}\t${p.date}\t${p.time}`).join("\n"),
@@ -328,8 +342,41 @@ function App() {
     });
   }, []);
 
-  useEffect(()=>{try{localStorage.setItem(STORAGE_KEY_ARR,JSON.stringify(arrivals));}catch{}},[arrivals]);
-  useEffect(()=>{try{localStorage.setItem(STORAGE_KEY_DEP,JSON.stringify(departures));}catch{}},[departures]);
+  useEffect(()=>{
+    const unsub=db.collection("data").doc("arrivals").onSnapshot(snap=>{
+      const items=snap.data()?.items;
+      if(!Array.isArray(items))return;
+      fsArrUpdatingRef.current=true;
+      setArrivals(items);
+      try{localStorage.setItem(STORAGE_KEY_ARR,JSON.stringify(items));}catch{}
+    });
+    return unsub;
+  },[]);
+
+  useEffect(()=>{
+    const unsub=db.collection("data").doc("departures").onSnapshot(snap=>{
+      const items=snap.data()?.items;
+      if(!Array.isArray(items))return;
+      fsDepUpdatingRef.current=true;
+      setDepartures(items);
+      try{localStorage.setItem(STORAGE_KEY_DEP,JSON.stringify(items));}catch{}
+    });
+    return unsub;
+  },[]);
+
+  useEffect(()=>{
+    if(fsArrUpdatingRef.current){fsArrUpdatingRef.current=false;return;}
+    db.collection("data").doc("arrivals").set({items:arrivals}).catch(()=>{
+      try{localStorage.setItem(STORAGE_KEY_ARR,JSON.stringify(arrivals));}catch{}
+    });
+  },[arrivals]);
+
+  useEffect(()=>{
+    if(fsDepUpdatingRef.current){fsDepUpdatingRef.current=false;return;}
+    db.collection("data").doc("departures").set({items:departures}).catch(()=>{
+      try{localStorage.setItem(STORAGE_KEY_DEP,JSON.stringify(departures));}catch{}
+    });
+  },[departures]);
 
   const people    = tab==="arrivals"?arrivals:departures;
   const setPeople = tab==="arrivals"?setArrivals:setDepartures;
