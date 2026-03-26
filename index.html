@@ -322,13 +322,11 @@ function App() {
 
   const arrivalsRef = useRef(arrivals);
   arrivalsRef.current = arrivals;
+  const departuresRef = useRef(departures);
+  departuresRef.current = departures;
   const lastFlightFetchRef = useRef({});
   const flightFetchInflightRef = useRef(new Set());
   const runFlightRefreshRoundRef = useRef(null);
-  const fsArrUpdatingRef = useRef(false);
-  const fsDepUpdatingRef = useRef(false);
-  const fsArrReadyRef = useRef(false);
-  const fsDepReadyRef = useRef(false);
 
   const arrivalsScheduleKey = useMemo(
     () => arrivals.map((p) => `${p.id}\t${p.flight}\t${p.date}\t${p.time}`).join("\n"),
@@ -347,14 +345,7 @@ function App() {
   useEffect(()=>{
     const unsub=db.collection("data").doc("arrivals").onSnapshot(snap=>{
       const items=snap.data()?.items;
-      if(!Array.isArray(items)){
-        // Document doesn't exist yet — seed it from local state
-        fsArrReadyRef.current=true;
-        db.collection("data").doc("arrivals").set({items:arrivalsRef.current}).catch(()=>{});
-        return;
-      }
-      fsArrReadyRef.current=true;
-      fsArrUpdatingRef.current=true;
+      if(!Array.isArray(items))return;
       setArrivals(items);
       try{localStorage.setItem(STORAGE_KEY_ARR,JSON.stringify(items));}catch{}
     });
@@ -364,35 +355,12 @@ function App() {
   useEffect(()=>{
     const unsub=db.collection("data").doc("departures").onSnapshot(snap=>{
       const items=snap.data()?.items;
-      if(!Array.isArray(items)){
-        // Document doesn't exist yet — seed it from local state
-        fsDepReadyRef.current=true;
-        db.collection("data").doc("departures").set({items:departures}).catch(()=>{});
-        return;
-      }
-      fsDepReadyRef.current=true;
-      fsDepUpdatingRef.current=true;
+      if(!Array.isArray(items))return;
       setDepartures(items);
       try{localStorage.setItem(STORAGE_KEY_DEP,JSON.stringify(items));}catch{}
     });
     return unsub;
   },[]);
-
-  useEffect(()=>{
-    if(!fsArrReadyRef.current)return;
-    if(fsArrUpdatingRef.current){fsArrUpdatingRef.current=false;return;}
-    db.collection("data").doc("arrivals").set({items:arrivals}).catch(()=>{
-      try{localStorage.setItem(STORAGE_KEY_ARR,JSON.stringify(arrivals));}catch{}
-    });
-  },[arrivals]);
-
-  useEffect(()=>{
-    if(!fsDepReadyRef.current)return;
-    if(fsDepUpdatingRef.current){fsDepUpdatingRef.current=false;return;}
-    db.collection("data").doc("departures").set({items:departures}).catch(()=>{
-      try{localStorage.setItem(STORAGE_KEY_DEP,JSON.stringify(departures));}catch{}
-    });
-  },[departures]);
 
   const people    = tab==="arrivals"?arrivals:departures;
   const setPeople = tab==="arrivals"?setArrivals:setDepartures;
@@ -455,31 +423,29 @@ function App() {
         const txt = await fetchFlightStatusText(group[0]);
         lastFlightFetchRef.current[key] = Date.now();
         const ids = new Set(group.map((x) => x.id));
-        setArrivals((prev) => {
-          let changed = false;
-          const next = prev.map((p) => {
-            if (!ids.has(p.id)) return p;
-            if (isLandedStatus(p.status)) return p;
-            if (p.status === txt) return p;
-            changed = true;
-            return { ...p, status: txt };
-          });
-          return changed ? next : prev;
+        const prev = arrivalsRef.current;
+        let changed = false;
+        const next = prev.map((p) => {
+          if (!ids.has(p.id)) return p;
+          if (isLandedStatus(p.status)) return p;
+          if (p.status === txt) return p;
+          changed = true;
+          return { ...p, status: txt };
         });
+        if (changed) db.collection("data").doc("arrivals").set({items:next}).catch(()=>{});
       } catch {
         lastFlightFetchRef.current[key] = Date.now();
         const ids = new Set(group.map((x) => x.id));
-        setArrivals((prev) => {
-          let changed = false;
-          const next = prev.map((p) => {
-            if (!ids.has(p.id)) return p;
-            if (isLandedStatus(p.status)) return p;
-            if (p.status === "Error") return p;
-            changed = true;
-            return { ...p, status: "Error" };
-          });
-          return changed ? next : prev;
+        const prev = arrivalsRef.current;
+        let changed = false;
+        const next = prev.map((p) => {
+          if (!ids.has(p.id)) return p;
+          if (isLandedStatus(p.status)) return p;
+          if (p.status === "Error") return p;
+          changed = true;
+          return { ...p, status: "Error" };
         });
+        if (changed) db.collection("data").doc("arrivals").set({items:next}).catch(()=>{});
       } finally {
         flightFetchInflightRef.current.delete(key);
         setLoadingF((lf) => {
@@ -540,8 +506,13 @@ function App() {
 
   function handleSubmit() {
     if (!form.name.trim()||!form.date||!form.time){showToast("Name, date and time are required","error");return;}
-    if (editId){setPeople(prev=>prev.map(p=>p.id===editId?{...p,...form}:p));showToast("Updated");}
-    else{setPeople(prev=>[...prev,{id:uid(),...form,status:null}]);showToast("Added to schedule");}
+    const isArr = tab==="arrivals";
+    const current = isArr ? arrivalsRef.current : departuresRef.current;
+    const col = isArr ? "arrivals" : "departures";
+    let newItems;
+    if (editId){newItems=current.map(p=>p.id===editId?{...p,...form}:p);showToast("Updated");}
+    else{newItems=[...current,{id:uid(),...form,status:null}];showToast("Added to schedule");}
+    db.collection("data").doc(col).set({items:newItems}).catch(()=>{});
     if (filterDate!=="all"&&form.date!==filterDate){setFilter("all");}
     resetForm();setView("runs");
   }
@@ -551,7 +522,13 @@ function App() {
     setEditId(p.id);setView("add");
   }
 
-  function handleDelete(id){setPeople(prev=>prev.filter(p=>p.id!==id));setDelConfirm(null);showToast("Removed");}
+  function handleDelete(id){
+    const isArr = tab==="arrivals";
+    const current = isArr ? arrivalsRef.current : departuresRef.current;
+    const col = isArr ? "arrivals" : "departures";
+    db.collection("data").doc(col).set({items:current.filter(p=>p.id!==id)}).catch(()=>{});
+    setDelConfirm(null);showToast("Removed");
+  }
 
   function closeResetModal() {
     setResetOpen(false);
@@ -563,8 +540,8 @@ function App() {
       showToast("Incorrect passcode", "error");
       return;
     }
-    setArrivals(materializeDefaultArrivals());
-    setDepartures([]);
+    db.collection("data").doc("arrivals").set({items:materializeDefaultArrivals()}).catch(()=>{});
+    db.collection("data").doc("departures").set({items:[]}).catch(()=>{});
     setLoadingF({});
     lastFlightFetchRef.current = {};
     flightFetchInflightRef.current.clear();
