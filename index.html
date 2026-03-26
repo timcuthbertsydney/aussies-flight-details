@@ -540,7 +540,10 @@ function App() {
       showToast("Incorrect passcode", "error");
       return;
     }
-    db.collection("data").doc("arrivals").set({items:materializeDefaultArrivals()}).catch(()=>{});
+    const defaultArrivals = materializeDefaultArrivals();
+    setArrivals(defaultArrivals);
+    setDepartures([]);
+    db.collection("data").doc("arrivals").set({items:defaultArrivals}).catch(()=>{});
     db.collection("data").doc("departures").set({items:[]}).catch(()=>{});
     setLoadingF({});
     lastFlightFetchRef.current = {};
