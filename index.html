@@ -345,20 +345,22 @@ function App() {
   useEffect(()=>{
     const unsub=db.collection("data").doc("arrivals").onSnapshot(snap=>{
       const items=snap.data()?.items;
+      console.log("[FS] arrivals snapshot, count:", Array.isArray(items)?items.length:"no data");
       if(!Array.isArray(items))return;
       setArrivals(items);
       try{localStorage.setItem(STORAGE_KEY_ARR,JSON.stringify(items));}catch{}
-    });
+    }, err=>console.error("[FS] arrivals listener error:", err));
     return unsub;
   },[]);
 
   useEffect(()=>{
     const unsub=db.collection("data").doc("departures").onSnapshot(snap=>{
       const items=snap.data()?.items;
+      console.log("[FS] departures snapshot, count:", Array.isArray(items)?items.length:"no data");
       if(!Array.isArray(items))return;
       setDepartures(items);
       try{localStorage.setItem(STORAGE_KEY_DEP,JSON.stringify(items));}catch{}
-    });
+    }, err=>console.error("[FS] departures listener error:", err));
     return unsub;
   },[]);
 
@@ -540,11 +542,17 @@ function App() {
       showToast("Incorrect passcode", "error");
       return;
     }
-    const defaultArrivals = materializeDefaultArrivals();
-    setArrivals(defaultArrivals);
+    setArrivals([]);
     setDepartures([]);
-    db.collection("data").doc("arrivals").set({items:defaultArrivals}).catch(()=>{});
-    db.collection("data").doc("departures").set({items:[]}).catch(()=>{});
+    console.log("[RESET] Writing empty arrays to Firestore...");
+    db.collection("data").doc("arrivals").set({items:[]})
+      .then(()=>console.log("[RESET] arrivals cleared in Firestore"))
+      .catch(err=>console.error("[RESET] arrivals write FAILED:", err));
+    db.collection("data").doc("departures").set({items:[]})
+      .then(()=>console.log("[RESET] departures cleared in Firestore"))
+      .catch(err=>console.error("[RESET] departures write FAILED:", err));
+    try{localStorage.removeItem(STORAGE_KEY_ARR);}catch{}
+    try{localStorage.removeItem(STORAGE_KEY_DEP);}catch{}
     setLoadingF({});
     lastFlightFetchRef.current = {};
     flightFetchInflightRef.current.clear();
@@ -553,7 +561,7 @@ function App() {
     setView("runs");
     setDelConfirm(null);
     closeResetModal();
-    showToast("All data cleared. Default arrivals restored.");
+    showToast("All data erased.");
   }
 
   return (
