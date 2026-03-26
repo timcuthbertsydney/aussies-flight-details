@@ -327,6 +327,8 @@ function App() {
   const runFlightRefreshRoundRef = useRef(null);
   const fsArrUpdatingRef = useRef(false);
   const fsDepUpdatingRef = useRef(false);
+  const fsArrReadyRef = useRef(false);
+  const fsDepReadyRef = useRef(false);
 
   const arrivalsScheduleKey = useMemo(
     () => arrivals.map((p) => `${p.id}\t${p.flight}\t${p.date}\t${p.time}`).join("\n"),
@@ -345,7 +347,13 @@ function App() {
   useEffect(()=>{
     const unsub=db.collection("data").doc("arrivals").onSnapshot(snap=>{
       const items=snap.data()?.items;
-      if(!Array.isArray(items))return;
+      if(!Array.isArray(items)){
+        // Document doesn't exist yet — seed it from local state
+        fsArrReadyRef.current=true;
+        db.collection("data").doc("arrivals").set({items:arrivalsRef.current}).catch(()=>{});
+        return;
+      }
+      fsArrReadyRef.current=true;
       fsArrUpdatingRef.current=true;
       setArrivals(items);
       try{localStorage.setItem(STORAGE_KEY_ARR,JSON.stringify(items));}catch{}
@@ -356,7 +364,13 @@ function App() {
   useEffect(()=>{
     const unsub=db.collection("data").doc("departures").onSnapshot(snap=>{
       const items=snap.data()?.items;
-      if(!Array.isArray(items))return;
+      if(!Array.isArray(items)){
+        // Document doesn't exist yet — seed it from local state
+        fsDepReadyRef.current=true;
+        db.collection("data").doc("departures").set({items:departures}).catch(()=>{});
+        return;
+      }
+      fsDepReadyRef.current=true;
       fsDepUpdatingRef.current=true;
       setDepartures(items);
       try{localStorage.setItem(STORAGE_KEY_DEP,JSON.stringify(items));}catch{}
@@ -365,6 +379,7 @@ function App() {
   },[]);
 
   useEffect(()=>{
+    if(!fsArrReadyRef.current)return;
     if(fsArrUpdatingRef.current){fsArrUpdatingRef.current=false;return;}
     db.collection("data").doc("arrivals").set({items:arrivals}).catch(()=>{
       try{localStorage.setItem(STORAGE_KEY_ARR,JSON.stringify(arrivals));}catch{}
@@ -372,6 +387,7 @@ function App() {
   },[arrivals]);
 
   useEffect(()=>{
+    if(!fsDepReadyRef.current)return;
     if(fsDepUpdatingRef.current){fsDepUpdatingRef.current=false;return;}
     db.collection("data").doc("departures").set({items:departures}).catch(()=>{
       try{localStorage.setItem(STORAGE_KEY_DEP,JSON.stringify(departures));}catch{}
