@@ -88,6 +88,13 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function depTravelMins(dateStr) {
+  const day = new Date(dateStr + "T00:00:00").getDay();
+  if (day === 0) return 15; // Sunday
+  if (day === 1) return 20; // Monday
+  return 15; // default for other days
+}
+
 function nowTimeStr() {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -714,7 +721,7 @@ function App() {
                 {label:"Name *",        key:"name",   type:"text", ph:"Full name"},
                 {label:"Mobile",        key:"mobile", type:"text", ph:"04xx xxx xxx (optional)"},
                 {label:"Date *",        key:"date",   type:"date", ph:""},
-                {label: tab==="arrivals"?"Plane lands *":"Pickup time *", key:"time", type:"time", ph:""},
+                {label: tab==="arrivals"?"Plane lands *":"Flight departs *", key:"time", type:"time", ph:""},
                 {label:"Flight / train",key:"flight", type:"text", ph:"JQ404, VA527, or TRAIN"},
                 {label:"Note",          key:"note",   type:"text", ph:"Optional — bags, kids, etc."},
               ].map(f=>(
@@ -787,6 +794,10 @@ function App() {
               const latestTime = run.reduce((mx,p)=>p.time>mx?p.time:mx,"00:00");
               const depart     = addMinutes(latestTime,BUFFER_MIN);
               const arrive     = addMinutes(depart,TRAVEL_MIN);
+              const depTravel  = depTravelMins(run[0].date);
+              const earliestFlight = run.reduce((mn,p)=>p.time<mn?p.time:mn,"23:59");
+              const pickupTime = addMinutes(earliestFlight, -(90 + depTravel));
+              const airportArr = addMinutes(earliestFlight, -90);
               const flights    = [...new Set(run.map(p=>p.flight).filter(f=>f))];
               const color      = RUN_COLORS[ri%RUN_COLORS.length];
               const isToday    = run[0].date===todayStr();
@@ -826,12 +837,12 @@ function App() {
                       <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                         <div style={S.tBlock}>
                           <div style={S.tLbl}>Compound pickup</div>
-                          <div style={{...S.tVal,color:BRAND.red}}>{fmtTime(latestTime)}</div>
+                          <div style={{...S.tVal,color:BRAND.red}}>{fmtTime(pickupTime)}</div>
                         </div>
                         <div style={{fontSize:20,color:BRAND.red}}>{">"}</div>
                         <div style={S.tBlock}>
                           <div style={S.tLbl}>Arrive airport</div>
-                          <div style={S.tVal}>{fmtTime(arrive)}</div>
+                          <div style={S.tVal}>{fmtTime(airportArr)}</div>
                         </div>
                       </div>
                     )}
@@ -984,12 +995,14 @@ function App() {
                   Departures — to the airport ({runsDep.length} run{runsDep.length!==1?"s":""})
                 </div>
                 {runsDep.map((run,ri)=>{
-                  const latestTime = run.reduce((mx,p)=>p.time>mx?p.time:mx,"00:00");
-                  const arrive     = addMinutes(addMinutes(latestTime,BUFFER_MIN),TRAVEL_MIN);
-                  const color      = RUN_COLORS[(ri+3)%RUN_COLORS.length];
-                  const isToday    = run[0].date===todayStr();
-                  const expanded   = driverOpen.has(`d${ri}`);
-                  const summary    = `${fmtDate(run[0].date)} · Compound pickup ${fmtTime(latestTime)} · ${run.length} people`;
+                  const depTravel      = depTravelMins(run[0].date);
+                  const earliestFlight = run.reduce((mn,p)=>p.time<mn?p.time:mn,"23:59");
+                  const pickupTime     = addMinutes(earliestFlight, -(90 + depTravel));
+                  const airportArr     = addMinutes(earliestFlight, -90);
+                  const color          = RUN_COLORS[(ri+3)%RUN_COLORS.length];
+                  const isToday        = run[0].date===todayStr();
+                  const expanded       = driverOpen.has(`d${ri}`);
+                  const summary        = `${fmtDate(run[0].date)} · Pickup ${fmtTime(pickupTime)} · ${run.length} people`;
                   return (
                     <div key={`d-${ri}`} style={{...S.dvRun,borderColor:color}}>
                       <button type="button" style={S.dvRunHead} onClick={()=>toggleDriverRun("d", ri)}>
@@ -1002,14 +1015,14 @@ function App() {
                           <div style={S.dvRunHeadSub}>{summary}</div>
                         </div>
                         <div style={{...S.dvRunHeadTimes,color:BRAND.red}}>
-                          Airport<br/>{fmtTime(arrive)}
+                          Airport<br/>{fmtTime(airportArr)}
                         </div>
                       </button>
                       {expanded&&(
                         <div style={S.dvBody}>
                           <div style={S.dvTimeRow}>
-                            <span style={{color:BRAND.red}}><b>Compound pickup</b> {fmtTime(latestTime)}</span>
-                            <span><b>Arrive airport</b> {fmtTime(arrive)}</span>
+                            <span style={{color:BRAND.red}}><b>Compound pickup</b> {fmtTime(pickupTime)}</span>
+                            <span><b>Arrive airport</b> {fmtTime(airportArr)}</span>
                           </div>
                           {run.map((p)=>{
                             const th = telHref(p.mobile);
